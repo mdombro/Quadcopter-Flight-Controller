@@ -7,22 +7,22 @@
 
 #include "ESC.h"
 
-int32_t writePWM1(int32_t spd) {
+void writePWM1(int32_t spd) {
 	int32_t val = Map(spd, 0, 100, PWM_MIN_TICKS, PWM_MAX_TICKS);
 	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_2, val);
 }
 
-int32_t writePWM2(int32_t spd) {
+void writePWM2(int32_t spd) {
 	int32_t val = Map(spd, 0, 100, PWM_MIN_TICKS, PWM_MAX_TICKS);
 	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_5, val);
 }
 
-int32_t writePWM3(int32_t spd) {
+void writePWM3(int32_t spd) {
 	int32_t val = Map(spd, 0, 100, PWM_MIN_TICKS, PWM_MAX_TICKS);
 	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_6, val);
 }
 
-int32_t writePWM4(int32_t spd) {
+void writePWM4(int32_t spd) {
 	int32_t val = Map(spd, 0, 100, PWM_MIN_TICKS, PWM_MAX_TICKS);
 	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_7, val);
 }

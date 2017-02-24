@@ -31,10 +31,10 @@
 // --------------------- Function Prototype Definitions ----------------------------------------------//
 void ConfigurePWM();   // configure PWM module 1, output 5 on PF1
 int32_t map(int32_t in, int32_t inMin, int32_t inMax, int32_t outMin, int32_t outMax);
-int32_t writePWM1(int32_t spd);
-int32_t writePWM2(int32_t spd);
-int32_t writePWM3(int32_t spd);
-int32_t writePWM4(int32_t spd);
+void writePWM1(int32_t spd);
+void writePWM2(int32_t spd);
+void writePWM3(int32_t spd);
+void writePWM4(int32_t spd);
 
 
 

@@ -39,6 +39,7 @@
 #include "driverlib/uart.h"
 #include "driverlib/fpu.h"
 #include "utils/uartstdio.h"
+#include "drivers/rgb.h"  // careful with this one, try to find another way to drive LEDs
 #include "sensorlib/hw_mpu9150.h"
 #include "sensorlib/hw_ak8975.h"
 #include "sensorlib/i2cm_drv.h"
