@@ -100,11 +100,15 @@
 #define ELEVATOR_MAX 1928
 #define ELEVATOR_MIN 991
 #define THROTTLE_MAX 1947
-#define THROTTLE_MIN 958  //958
+#define THROTTLE_MIN 958
 #define RUDDER_MAX 1966
 #define RUDDER_MIN 1028
 #define EMERGENCY_MAX 1909
 #define EMERGENCY_MIN 1033
+
+#define PID_UPDATE_FREQUENCY 200
+// AHRS sample rate = 1000/(1+value)
+#define SAMPLE_AHRS_500HZ    0x01
 
 
 //*****************************************************************************
@@ -732,7 +736,7 @@ main(void)
     //
     // Write sample rate into SMPLRT_DIV register
     //
-    g_sMPU9150Inst.pui8Data[0] = 0x01;
+    g_sMPU9150Inst.pui8Data[0] = SAMPLE_AHRS_500HZ;
     MPU9150Write(&g_sMPU9150Inst, MPU9150_O_SMPLRT_DIV, g_sMPU9150Inst.pui8Data, 1,
                      MPU9150AppCallback, &g_sMPU9150Inst);
 
@@ -785,7 +789,7 @@ main(void)
     //**********************************************************
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
 	TimerConfigure(TIMER1_BASE, TIMER_CFG_PERIODIC);
-	uint32_t ui32Period = SysCtlClockGet() / 200;
+	uint32_t ui32Period = SysCtlClockGet() / PID_UPDATE_FREQUENCY;
 	TimerLoadSet(TIMER1_BASE, TIMER_A, ui32Period -1);
 
 	IntPrioritySet(INT_TIMER1A, 0b00100000);
