@@ -185,6 +185,18 @@ volatile bool EMERGENCY;
 
 //*****************************************************************************
 //
+// Global struct for the PIDs and global output variables
+// PID inputs will be gyro rates (pfGyro) and Eulers angles (pfEulers)
+//
+//*****************************************************************************
+PID RateRoll;
+PID RatePitch;
+PID RateYaw;
+int32_t RateRollOutput, RatePitchOutput, RateYawOutput;
+
+
+//*****************************************************************************
+//
 // Initialization counter to average out Accel and mag based initial orientation
 //
 //*****************************************************************************
@@ -802,6 +814,15 @@ main(void)
     ConfigurePWM();
 
     SysCtlDelay(800000); //80000000
+    PID_Make(&RateRoll, &(pfGyro[0]), &RateRollOutput, &aileron, DIRECT);
+    PID_Make(&RatePitch, &(pfGyro[1]), &RatePitchOutput, &elevator, DIRECT);
+    PID_Make(&RateYaw, &(pfGyro[2]), &RateYawOutput, &rudder, DIRECT);
+    SetMode(&RateRoll, AUTOMATIC);
+    SetMode(&RatePitch, AUTOMATIC);
+    SetMode(&RateYaw, AUTOMATIC);
+    SetOutputLimits(&RateRoll, 0, 1000);
+    SetOutputLimits(&RatePitch, 0, 1000);
+    SetOutputLimits(&RateYaw, 0, 1000);
     IntMasterEnable();
 
     aile_on = 0;
