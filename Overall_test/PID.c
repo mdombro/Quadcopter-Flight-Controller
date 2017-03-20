@@ -61,7 +61,7 @@ bool Compute(PID *pid)
 	*(pid->myOutput) = output;
 
 	/*Remember some variables for next time*/
-	//pid->lastInput = input;
+	pid->lastInput = input;
 	//pid->lastTime = now;
 	return true;
    //}

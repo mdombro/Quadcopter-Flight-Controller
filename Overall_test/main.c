@@ -39,7 +39,7 @@
 #include "driverlib/uart.h"
 #include "driverlib/fpu.h"
 #include "utils/uartstdio.h"
-#include "drivers/rgb.h"  // careful with this one, try to find another way to drive LEDs
+//#include "drivers/rgb.h"  // careful with this one, try to find another way to drive LEDs
 #include "sensorlib/hw_mpu9150.h"
 #include "sensorlib/hw_ak8975.h"
 #include "sensorlib/i2cm_drv.h"
@@ -48,6 +48,7 @@
 #include "driverlib/timer.h"
 #include "Orientation_filter.h"
 #include "ESC.h"
+#include "PID.h"
 
 //*****************************************************************************
 //
@@ -106,7 +107,7 @@
 #define EMERGENCY_MAX 1909
 #define EMERGENCY_MIN 1033
 
-#define PID_UPDATE_FREQUENCY 200
+#define PID_UPDATE_FREQUENCY 50
 // AHRS sample rate = 1000/(1+value)
 #define SAMPLE_AHRS_500HZ    0x01
 
@@ -179,7 +180,7 @@ uint16_t count = 0;
 // Global variables to hold Receiver Values
 //
 //*****************************************************************************
-volatile uint32_t aileron, elevator, throttle, rudder, emergency, aileron_start, elevator_start, throttle_start, rudder_start, emergency_start;
+volatile int32_t aileron, elevator, throttle, rudder, emergency, aileron_start, elevator_start, throttle_start, rudder_start, emergency_start;
 volatile uint8_t aile_on, ele_on, thro_on, rud_on, emerg_on;
 volatile bool EMERGENCY;
 
@@ -192,7 +193,8 @@ volatile bool EMERGENCY;
 PID RateRoll;
 PID RatePitch;
 PID RateYaw;
-int32_t RateRollOutput, RatePitchOutput, RateYawOutput;
+float RateRollOutput, RatePitchOutput, RateYawOutput;
+float aileron_f, elevator_f, rudder_f;
 
 
 //*****************************************************************************
@@ -304,11 +306,12 @@ IntGPIOb(void)
 	}
 
 	Orientation_Filter_Update(&Filter, pfGyro, pfAccel, 0);
-	//getEuler(&Filter, pfEulers);
+	getEuler(&Filter, pfEulers);
 
 //	if (count%10 == 0) {
-//		getQuaternion(&Filter, quat);
-//		UARTprintf("%d,%d,%d,%d\n", (int)(quat[0]*1e7), (int)(quat[1]*1e7), (int)(quat[2]*1e7), (int)(quat[3]*1e7));
+//		//getQuaternion(&Filter, quat);
+//		//UARTprintf("%d,%d,%d,%d\n", (int)(quat[0]*1e7), (int)(quat[1]*1e7), (int)(quat[2]*1e7), (int)(quat[3]*1e7));
+//		UARTprintf("%d\n", (int)(pfGyro[0]*1e4));
 //	}
 //	count++;
 }
@@ -448,8 +451,8 @@ void RxCapture() {
 		emerg_on = 0;
 		elevator_start = TimerValueGet(TIMER0_BASE, TIMER_A);
 	}
-	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_4) == GPIO_PIN_4) {
-		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
+	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_1) == GPIO_PIN_1) {
+		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
 		// throttle
 		aile_on = 0;
 		ele_on = 0;
@@ -458,8 +461,8 @@ void RxCapture() {
 		emerg_on = 0;
 		throttle_start = TimerValueGet(TIMER0_BASE, TIMER_A);
 	}
-	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_0) == GPIO_PIN_0) {
-		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
+	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_4) == GPIO_PIN_4) {
+		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
 		// rudder
 		aile_on = 0;
 		ele_on = 0;
@@ -468,8 +471,8 @@ void RxCapture() {
 		emerg_on = 0;
 		rudder_start = TimerValueGet(TIMER0_BASE, TIMER_A);
 	}
-	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_1) == GPIO_PIN_1) {
-		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
+	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_0) == GPIO_PIN_0) {
+		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
 		// emergency
 		aile_on = 0;
 		ele_on = 0;
@@ -488,7 +491,7 @@ void RxCapture() {
 			rud_on = 0;
 			emerg_on = 0;
 			aileron = (TimerValueGet(TIMER0_BASE, TIMER_A) - aileron_start)*CLOCK_PERIOD;
-			aileron = Map(aileron, AILERON_MIN, AILERON_MAX, -50, 50);
+			aileron_f = (float) Map(aileron, AILERON_MIN, AILERON_MAX, -50, 50);
 		}
 		else if (ele_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b1000)) {
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_3);  // Clear interrupt flag
@@ -498,10 +501,10 @@ void RxCapture() {
 			rud_on = 0;
 			emerg_on = 0;
 			elevator = (TimerValueGet(TIMER0_BASE, TIMER_A) - elevator_start)*CLOCK_PERIOD;
-			elevator = Map(elevator, ELEVATOR_MIN, ELEVATOR_MAX, -50, 50);
+			elevator_f = (float) Map(elevator, ELEVATOR_MIN, ELEVATOR_MAX, -50, 50);
 		}
-		else if (thro_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b10000)) {
-			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
+		else if (thro_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b10)) {
+			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
 			aile_on = 0;
 			ele_on = 0;
 			thro_on = 0;
@@ -510,18 +513,18 @@ void RxCapture() {
 			throttle = (TimerValueGet(TIMER0_BASE, TIMER_A) - throttle_start)*CLOCK_PERIOD;
 			throttle = Map(throttle, THROTTLE_MIN, THROTTLE_MAX, 0, 100);
 		}
-		else if (rud_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b01)) {
-			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
+		else if (rud_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b10000)) {
+			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
 			aile_on = 0;
 			ele_on = 0;
 			thro_on = 0;
 			rud_on = 0;
 			emerg_on = 0;
 			rudder = (TimerValueGet(TIMER0_BASE, TIMER_A) - rudder_start)*CLOCK_PERIOD;
-			rudder = Map(rudder, RUDDER_MIN, RUDDER_MAX, -50, 50);
+			rudder_f = (float) Map(rudder, RUDDER_MIN, RUDDER_MAX, -50, 50);
 		}
-		else if (emerg_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b10)) {
-			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
+		else if (emerg_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b01)) {
+			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
 			aile_on = 0;
 			ele_on = 0;
 			thro_on = 0;
@@ -634,11 +637,20 @@ ConfigureUART(void)
 //*****************************************************************************
 void PIDUpdate() {
 	TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
-	if (!EMERGENCY) {
-		writePWM1(throttle);
-		writePWM2(throttle);
-		writePWM3(throttle);
-		writePWM4(throttle);
+	//UARTprintf("%d\n", aileron);
+	//UARTprintf("%4d\n", (int)(RateRollOutput*1e4));
+	if (throttle > 10 && !EMERGENCY) {
+		Compute(&RateRoll);
+		Compute(&RatePitch);
+		Compute(&RateYaw);
+//		PWM1 - Front Left
+//		PWM2 - Back left
+//		PWM3 - Front right
+// 		PWM4 - Back right
+		writePWM1(Constrain(throttle - (int32_t)RateRollOutput - (int32_t)RatePitchOutput, 0, 100));  // Front left
+		writePWM2(Constrain(throttle - (int32_t)RateRollOutput + (int32_t)RatePitchOutput, 0, 100));
+		writePWM3(Constrain(throttle + (int32_t)RateRollOutput - (int32_t)RatePitchOutput, 0, 100));
+		writePWM4(Constrain(throttle + (int32_t)RateRollOutput + (int32_t)RatePitchOutput, 0, 100));
 	}
 	else {
 		writePWM1(0);
@@ -646,6 +658,35 @@ void PIDUpdate() {
 		writePWM3(0);
 		writePWM4(0);
 	}
+
+
+//	if (!EMERGENCY) {
+//		writePWM1(throttle);
+//		writePWM2(throttle);
+//		writePWM3(throttle);
+//		writePWM4(throttle);
+//	}
+//	else {
+//		writePWM1(0);
+//		writePWM2(0);
+//		writePWM3(0);
+//		writePWM4(0);
+//	}
+}
+
+//*****************************************************************************
+//
+// Constrain values to a given range
+//
+//*****************************************************************************
+int32_t Constrain(int32_t input, int32_t floor, int32_t ceiling) {
+	if (input > ceiling)
+		return ceiling;
+	else if (input < floor) {
+		return floor;
+	}
+	else
+		return input;
 }
 
 
@@ -667,6 +708,7 @@ main(void)
     pfMag = pfData + 6;
     pfEulers = pfData + 9;
     pfQuaternion = pfData + 12;
+
     initCount = 50;
 
     //
@@ -807,22 +849,27 @@ main(void)
 	IntPrioritySet(INT_TIMER1A, 0b00100000);
 	IntEnable(INT_TIMER1A);
 	TimerIntEnable(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
-	IntMasterEnable();
+
 
 	TimerEnable(TIMER1_BASE, TIMER_A);
 
     ConfigurePWM();
 
-    SysCtlDelay(800000); //80000000
-    PID_Make(&RateRoll, &(pfGyro[0]), &RateRollOutput, &aileron, DIRECT);
-    PID_Make(&RatePitch, &(pfGyro[1]), &RatePitchOutput, &elevator, DIRECT);
-    PID_Make(&RateYaw, &(pfGyro[2]), &RateYawOutput, &rudder, DIRECT);
+    IntMasterEnable();
+
+    SysCtlDelay(800000); //80000000   800000
+    PID_Make(&RateRoll, &pfData[4], &RateRollOutput, &aileron_f, 10, 0, 0, DIRECT);
+    PID_Make(&RatePitch, &pfData[3], &RatePitchOutput, &elevator_f, 10, 0, 0, DIRECT);
+    PID_Make(&RateYaw, &pfData[5], &RateYawOutput, &rudder_f, 10, 0, 0, DIRECT);
+//    SetTunings(&RateRoll, 1, 0, 0);
+//    SetTunings(&RatePitch, 1, 0, 0);
+//    SetTunings(&RateYaw, 1, 0, 0);
     SetMode(&RateRoll, AUTOMATIC);
     SetMode(&RatePitch, AUTOMATIC);
     SetMode(&RateYaw, AUTOMATIC);
-    SetOutputLimits(&RateRoll, 0, 1000);
-    SetOutputLimits(&RatePitch, 0, 1000);
-    SetOutputLimits(&RateYaw, 0, 1000);
+    SetOutputLimits(&RateRoll, -100, 100);
+    SetOutputLimits(&RatePitch, -100, 100);
+    SetOutputLimits(&RateYaw, -100, 100);
     IntMasterEnable();
 
     aile_on = 0;
@@ -839,13 +886,17 @@ main(void)
     uint32_t count = 0;
     while(1)
     {
-    	count++;
-    	if (count == 50000) {
-    		count = 0;
-    		//IntMasterDisable();
-    		UARTprintf("%d\n", throttle);
-    		//IntMasterEnable();
-    	}
+//    	count++;
+//    	if (count == 70000) {
+//    		count = 0;
+//    		//IntMasterDisable();
+//    		//UARTprintf("%d\n", throttle);
+//    		//UARTprintf("%d  %d  %d\n", (int)(pfGyro[0]*1e4), (int)(1e4*pfGyro[1]), (int)(1e4*pfGyro[2]));
+//    		//UARTprintf("%4d\n", (int)(RateRollOutput*1e4));
+//    		//UARTprintf("%d\n", (int)(aileron_f*1e3));
+//    		UARTprintf("%4d\n", (int)(pfGyro[1]*1e4));
+//    		//IntMasterEnable();
+//    	}
 
 	}
 }

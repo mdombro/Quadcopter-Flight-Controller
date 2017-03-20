@@ -279,14 +279,14 @@ IntGPIOb(void)
 		//UARTprintf("$%d %d %d;\n",  (int)(10*(pfEulers[0]+90.0f)),  (int)(10*(pfEulers[1]+90.0f)),  (int)(10*pfEulers[2]));
 
 		//UARTprintf("Accel: %12d  %12d  %12d\n", (int)(pfAccel[0]*(1e7)), (int)(pfAccel[1]*(1e7)), (int)(pfAccel[2]*(1e7)));
-		//UARTprintf("Gyro: %12d  %12d  %12d\n", (int)(pfGyro[0]*(1e7)), (int)(pfGyro[1]*(1e7)), (int)(pfGyro[2]*(1e7)));
+		UARTprintf("Gyro: %12d  %12d  %12d\n", (int)(pfGyro[0]*(1e7)), (int)(pfGyro[1]*(1e7)), (int)(pfGyro[2]*(1e7)));
 
 		//UARTprintf("%d, %d, %d, %d, %d, %d\n", (int)(pfMag[0]*(1e8)), (int)(pfMag[1]*(1e8)), (int)(pfMag[2]*(1e8)), (int)(pfAccel[0]*(1e8)), (int)(pfAccel[1]*(1e8)), (int)(pfAccel[2]*(1e8)));
 		//UARTprintf("$%d %d %d;\n", (int)(pfGyro[0]*(1e4)), (int)(pfGyro[1]*(1e4)), (int)(pfGyro[2]*(1e4)));
 
 		//UARTprintf("qCurrent: %14d  %14d  %14d  %14d\n", (int)(quat[0]*1e3), (int)(quat[1]*1e3), (int)(quat[2]*1e3), (int)(quat[3]*1e3));
 
-		UARTprintf("%d,%d,%d,%d\n", (int)(quat[0]*1e7), (int)(quat[1]*1e7), (int)(quat[2]*1e7), (int)(quat[3]*1e7));
+		//UARTprintf("%d,%d,%d,%d\n", (int)(quat[0]*1e7), (int)(quat[1]*1e7), (int)(quat[2]*1e7), (int)(quat[3]*1e7));
 
 		//UARTprintf("qGyro: %4d  %4d  %4d  %4d\n", (int)(Filter.qGyro[0]*10000), (int)(Filter.qGyro[1]*10000), (int)(Filter.qGyro[2]*10000), (int)(Filter.qGyro[3]*10000));
 		//UARTprintf("$%4d   %4d   %4d;\n",  (int)((pfEulers[0])),  (int)((pfEulers[1])),  (int)(pfEulers[2]));

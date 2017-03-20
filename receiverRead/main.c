@@ -39,117 +39,240 @@ volatile bool EMERGENCY = false;
 int32_t Map(int32_t in, int32_t inMin, int32_t inMax, int32_t outMin, int32_t outMax);
 
 void RxCapture(void) {
-	// Interrupt to handle receiver decoding
-	// Each if statement will start timer counting on the rising edge (with some checks)
-	// On falling edge for that pin timer is stopped and the value asessed
-	// First channel is emergency stop - if its over a certain amount of time a global SYSTEM_OFF flag is set
-	// Other channels are proportional channels
-	// Will be scaled to whatever value is necessary for the application
-	if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_2) == GPIO_PIN_2) {
-		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_2);  // Clear interrupt flag
-		// Aileron
-		aile_on = 1;
-		ele_on = 0;
-		thro_on = 0;
-		rud_on = 0;
-		emerg_on = 0;
-		aileron_start = TimerValueGet(TIMER0_BASE, TIMER_A);
-	}
-	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_3) == GPIO_PIN_3) {
-		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_3);  // Clear interrupt flag
-		// elevator
-		aile_on = 0;
-		ele_on = 1;
-		thro_on = 0;
-		rud_on = 0;
-		emerg_on = 0;
-		elevator_start = TimerValueGet(TIMER0_BASE, TIMER_A);
-	}
-	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_4) == GPIO_PIN_4) {
-		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
-		// throttle
-		aile_on = 0;
-		ele_on = 0;
-		thro_on = 1;
-		rud_on = 0;
-		emerg_on = 0;
-		throttle_start = TimerValueGet(TIMER0_BASE, TIMER_A);
-	}
-	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_0) == GPIO_PIN_0) {
-		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
-		// rudder
-		aile_on = 0;
-		ele_on = 0;
-		thro_on = 0;
-		rud_on = 1;
-		emerg_on = 0;
-		rudder_start = TimerValueGet(TIMER0_BASE, TIMER_A);
-	}
-	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_1) == GPIO_PIN_1) {
-		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
-		// emergency
-		aile_on = 0;
-		ele_on = 0;
-		thro_on = 0;
-		rud_on = 0;
-		emerg_on = 1;
-		emergency_start = TimerValueGet(TIMER0_BASE, TIMER_A);
-	}
-	else {
-		//TimerDisable(TIMER0_BASE, TIMER_A);
-		if (aile_on) {
-			aile_on = 0;
-			ele_on = 0;
-			thro_on = 0;
-			rud_on = 0;
-			emerg_on = 0;
-			aileron = (TimerValueGet(TIMER0_BASE, TIMER_A)-aileron_start)*CLOCK_PERIOD;
-			aileron = Map(aileron, AILERON_MIN, AILERON_MAX, -50, 50);
+	IntMasterDisable();
+		//UARTprintf("%3d %3d %3d %3d %3d\n", aileron, elevator, throttle, rudder, EMERGENCY);
+		//GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_5, 255);
+		// Interrupt to handle receiver decoding
+		// Each if statement will start timer counting on the rising edge (with some checks)
+		// On falling edge for that pin timer is stopped and the value asessed
+		// First channel is emergency stop - if its over a certain amount of time a global SYSTEM_OFF flag is set
+		// Other channels are proportional channels
+		// Will be scaled to whatever value is necessary for the application
+		if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_2) == GPIO_PIN_2) {
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_2);  // Clear interrupt flag
-		}
-		if (ele_on) {
-			aile_on = 0;
+			// Aileron
+			aile_on = 1;
 			ele_on = 0;
 			thro_on = 0;
 			rud_on = 0;
 			emerg_on = 0;
-			elevator = (TimerValueGet(TIMER0_BASE, TIMER_A)-elevator_start)*CLOCK_PERIOD;
-			elevator = Map(elevator, ELEVATOR_MIN, ELEVATOR_MAX, -50, 50);
+			aileron_start = TimerValueGet(TIMER0_BASE, TIMER_A);
+		}
+		else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_3) == GPIO_PIN_3) {
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_3);  // Clear interrupt flag
-		}
-		if (thro_on) {
+			// elevator
 			aile_on = 0;
-			ele_on = 0;
+			ele_on = 1;
 			thro_on = 0;
 			rud_on = 0;
 			emerg_on = 0;
-			throttle = (TimerValueGet(TIMER0_BASE, TIMER_A)-throttle_start)*CLOCK_PERIOD;
-			throttle = Map(throttle, THROTTLE_MIN, THROTTLE_MAX, 0, 100);
-			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
+			elevator_start = TimerValueGet(TIMER0_BASE, TIMER_A);
 		}
-		if (rud_on) {
-			aile_on = 0;
-			ele_on = 0;
-			thro_on = 0;
-			rud_on = 0;
-			emerg_on = 0;
-			rudder = (TimerValueGet(TIMER0_BASE, TIMER_A)-rudder_start)*CLOCK_PERIOD;
-			rudder = Map(rudder, RUDDER_MIN, RUDDER_MAX, -50, 50);
-			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
-		}
-		if (emerg_on) {
-			aile_on = 0;
-			ele_on = 0;
-			thro_on = 0;
-			rud_on = 0;
-			emerg_on = 0;
-			emergency = (TimerValueGet(TIMER0_BASE, TIMER_A)-emergency_start)*CLOCK_PERIOD;
-			if (emergency > 1500) EMERGENCY = true;
-			else EMERGENCY = false;
-			//emergency = Map(emergency, EMERGENCY_MIN, EMERGENCY_MAX, 0, 10);
+		else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_1) == GPIO_PIN_1) {
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
+			// throttle
+			aile_on = 0;
+			ele_on = 0;
+			thro_on = 1;
+			rud_on = 0;
+			emerg_on = 0;
+			throttle_start = TimerValueGet(TIMER0_BASE, TIMER_A);
 		}
-	}
+		else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_4) == GPIO_PIN_4) {
+			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
+			// rudder
+			aile_on = 0;
+			ele_on = 0;
+			thro_on = 0;
+			rud_on = 1;
+			emerg_on = 0;
+			rudder_start = TimerValueGet(TIMER0_BASE, TIMER_A);
+		}
+		else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_0) == GPIO_PIN_0) {
+			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
+			// emergency
+			aile_on = 0;
+			ele_on = 0;
+			thro_on = 0;
+			rud_on = 0;
+			emerg_on = 1;
+			emergency_start = TimerValueGet(TIMER0_BASE, TIMER_A);
+		}
+		else {
+			//TimerDisable(TIMER0_BASE, TIMER_A);
+			if (aile_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b100)) {
+				GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_2);  // Clear interrupt flag
+				aile_on = 0;
+				ele_on = 0;
+				thro_on = 0;
+				rud_on = 0;
+				emerg_on = 0;
+				aileron = (TimerValueGet(TIMER0_BASE, TIMER_A) - aileron_start)*CLOCK_PERIOD;
+				aileron = Map(aileron, AILERON_MIN, AILERON_MAX, -50, 50);
+			}
+			else if (ele_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b1000)) {
+				GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_3);  // Clear interrupt flag
+				aile_on = 0;
+				ele_on = 0;
+				thro_on = 0;
+				rud_on = 0;
+				emerg_on = 0;
+				elevator = (TimerValueGet(TIMER0_BASE, TIMER_A) - elevator_start)*CLOCK_PERIOD;
+				elevator = Map(elevator, ELEVATOR_MIN, ELEVATOR_MAX, -50, 50);
+			}
+			else if (thro_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b10)) {
+				GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
+				aile_on = 0;
+				ele_on = 0;
+				thro_on = 0;
+				rud_on = 0;
+				emerg_on = 0;
+				throttle = (TimerValueGet(TIMER0_BASE, TIMER_A) - throttle_start)*CLOCK_PERIOD;
+				throttle = Map(throttle, THROTTLE_MIN, THROTTLE_MAX, 0, 100);
+			}
+			else if (rud_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b10000)) {
+				GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
+				aile_on = 0;
+				ele_on = 0;
+				thro_on = 0;
+				rud_on = 0;
+				emerg_on = 0;
+				rudder = (TimerValueGet(TIMER0_BASE, TIMER_A) - rudder_start)*CLOCK_PERIOD;
+				rudder = Map(rudder, RUDDER_MIN, RUDDER_MAX, -50, 50);
+			}
+			else if (emerg_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b01)) {
+				GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
+				aile_on = 0;
+				ele_on = 0;
+				thro_on = 0;
+				rud_on = 0;
+				emerg_on = 0;
+				emergency = (TimerValueGet(TIMER0_BASE, TIMER_A) - emergency_start)*CLOCK_PERIOD;
+				if (emergency > 1500) EMERGENCY = true;
+				else EMERGENCY = false;
+				//emergency = Map(emergency, EMERGENCY_MIN, EMERGENCY_MAX, 0, 10);
+			}
+			else {
+				aile_on = 0;
+				ele_on = 0;
+				thro_on = 0;
+				rud_on = 0;
+				emerg_on = 0;
+			}
+		}
+		//GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_5, 0);
+		IntMasterEnable();
+//	// Interrupt to handle receiver decoding
+//	// Each if statement will start timer counting on the rising edge (with some checks)
+//	// On falling edge for that pin timer is stopped and the value asessed
+//	// First channel is emergency stop - if its over a certain amount of time a global SYSTEM_OFF flag is set
+//	// Other channels are proportional channels
+//	// Will be scaled to whatever value is necessary for the application
+//	if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_2) == GPIO_PIN_2) {
+//		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_2);  // Clear interrupt flag
+//		// Aileron
+//		aile_on = 1;
+//		ele_on = 0;
+//		thro_on = 0;
+//		rud_on = 0;
+//		emerg_on = 0;
+//		aileron_start = TimerValueGet(TIMER0_BASE, TIMER_A);
+//	}
+//	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_3) == GPIO_PIN_3) {
+//		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_3);  // Clear interrupt flag
+//		// elevator
+//		aile_on = 0;
+//		ele_on = 1;
+//		thro_on = 0;
+//		rud_on = 0;
+//		emerg_on = 0;
+//		elevator_start = TimerValueGet(TIMER0_BASE, TIMER_A);
+//	}
+//	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_4) == GPIO_PIN_4) {
+//		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
+//		// throttle
+//		aile_on = 0;
+//		ele_on = 0;
+//		thro_on = 1;
+//		rud_on = 0;
+//		emerg_on = 0;
+//		throttle_start = TimerValueGet(TIMER0_BASE, TIMER_A);
+//	}
+//	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_0) == GPIO_PIN_0) {
+//		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
+//		// rudder
+//		aile_on = 0;
+//		ele_on = 0;
+//		thro_on = 0;
+//		rud_on = 1;
+//		emerg_on = 0;
+//		rudder_start = TimerValueGet(TIMER0_BASE, TIMER_A);
+//	}
+//	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_1) == GPIO_PIN_1) {
+//		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
+//		// emergency
+//		aile_on = 0;
+//		ele_on = 0;
+//		thro_on = 0;
+//		rud_on = 0;
+//		emerg_on = 1;
+//		emergency_start = TimerValueGet(TIMER0_BASE, TIMER_A);
+//	}
+//	else {
+//		//TimerDisable(TIMER0_BASE, TIMER_A);
+//		if (aile_on) {
+//			aile_on = 0;
+//			ele_on = 0;
+//			thro_on = 0;
+//			rud_on = 0;
+//			emerg_on = 0;
+//			aileron = (TimerValueGet(TIMER0_BASE, TIMER_A)-aileron_start)*CLOCK_PERIOD;
+//			aileron = Map(aileron, AILERON_MIN, AILERON_MAX, -50, 50);
+//			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_2);  // Clear interrupt flag
+//		}
+//		if (ele_on) {
+//			aile_on = 0;
+//			ele_on = 0;
+//			thro_on = 0;
+//			rud_on = 0;
+//			emerg_on = 0;
+//			elevator = (TimerValueGet(TIMER0_BASE, TIMER_A)-elevator_start)*CLOCK_PERIOD;
+//			elevator = Map(elevator, ELEVATOR_MIN, ELEVATOR_MAX, -50, 50);
+//			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_3);  // Clear interrupt flag
+//		}
+//		if (thro_on) {
+//			aile_on = 0;
+//			ele_on = 0;
+//			thro_on = 0;
+//			rud_on = 0;
+//			emerg_on = 0;
+//			throttle = (TimerValueGet(TIMER0_BASE, TIMER_A)-throttle_start)*CLOCK_PERIOD;
+//			throttle = Map(throttle, THROTTLE_MIN, THROTTLE_MAX, 0, 100);
+//			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
+//		}
+//		if (rud_on) {
+//			aile_on = 0;
+//			ele_on = 0;
+//			thro_on = 0;
+//			rud_on = 0;
+//			emerg_on = 0;
+//			rudder = (TimerValueGet(TIMER0_BASE, TIMER_A)-rudder_start)*CLOCK_PERIOD;
+//			rudder = Map(rudder, RUDDER_MIN, RUDDER_MAX, -50, 50);
+//			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
+//		}
+//		if (emerg_on) {
+//			aile_on = 0;
+//			ele_on = 0;
+//			thro_on = 0;
+//			rud_on = 0;
+//			emerg_on = 0;
+//			emergency = (TimerValueGet(TIMER0_BASE, TIMER_A)-emergency_start)*CLOCK_PERIOD;
+//			if (emergency > 1500) EMERGENCY = true;
+//			else EMERGENCY = false;
+//			//emergency = Map(emergency, EMERGENCY_MIN, EMERGENCY_MAX, 0, 10);
+//			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
+//		}
+//	}
 }
 
 void
@@ -227,7 +350,7 @@ int main(void)
 		count++;
 		if (count == 50000) {
 			count = 0;
-			UARTprintf("%3d, %3d, %3d, %3d, %3d\n", aileron, elevator, throttle, rudder, EMERGENCY);
+			UARTprintf("%4d, %4d, %4d, %4d, %4d\n", aileron, elevator, throttle, rudder, EMERGENCY);
 		}
 	}
 }

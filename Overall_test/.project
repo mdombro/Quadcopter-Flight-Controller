@@ -26,21 +26,6 @@
 	</natures>
 	<linkedResources>
 		<link>
-			<name>driverlib.lib</name>
-			<type>1</type>
-			<locationURI>TIVAWARE_INSTALL/driverlib/ccs/Debug/driverlib.lib</locationURI>
-		</link>
-		<link>
-			<name>sensorlib.lib</name>
-			<type>1</type>
-			<locationURI>PARENT-7-PROJECT_LOC/ti/TivaWare_C_Series-2.1.3.156/sensorlib/ccs/Debug/sensorlib.lib</locationURI>
-		</link>
-		<link>
-			<name>drivers/rgb.c</name>
-			<type>1</type>
-			<locationURI>SW_ROOT/examples/boards/ek-tm4c123gxl-boostxl-senshub/drivers/rgb.c</locationURI>
-		</link>
-		<link>
 			<name>utils/uartstdio.c</name>
 			<type>1</type>
 			<locationURI>TIVAWARE_INSTALL/utils/uartstdio.c</locationURI>
@@ -49,11 +34,11 @@
 	<variableList>
 		<variable>
 			<name>ORIGINAL_PROJECT_ROOT</name>
-			<value>file:/D:/ti/TivaWare_C_Series-2.1.3.156/examples/boards/ek-tm4c123gxl-boostxl-senshub/compdcm_mpu9150/ccs</value>
+			<value>file:/C:/Users/SeniorDesign/Desktop/Flight%20Board/Code/CCSWorkspace/Overall_test</value>
 		</variable>
 		<variable>
 			<name>SW_ROOT</name>
-			<value>$%7BPARENT-5-ORIGINAL_PROJECT_ROOT%7D</value>
+			<value>$%7BORIGINAL_PROJECT_ROOT%7D</value>
 		</variable>
 	</variableList>
 </projectDescription>
