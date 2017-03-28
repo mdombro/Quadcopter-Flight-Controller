@@ -216,16 +216,28 @@ void sort(float *list[5], uint8_t size) {
 	}
 }
 
-void getEuler(OFilter *Filter, float euler[3]) {
-	euler[0] = atan2(2.0f*(Filter->qCurrent[0]*Filter->qCurrent[1]+Filter->qCurrent[2]*Filter->qCurrent[3]), 1.0f-2.0f*(Filter->qCurrent[1]*Filter->qCurrent[1]+Filter->qCurrent[2]*Filter->qCurrent[2]));
+void getRadians(OFilter *Filter, float radians[3]) {
+	radians[0] = atan2(2.0f*(Filter->qCurrent[0]*Filter->qCurrent[1]+Filter->qCurrent[2]*Filter->qCurrent[3]), 1.0f-2.0f*(Filter->qCurrent[1]*Filter->qCurrent[1]+Filter->qCurrent[2]*Filter->qCurrent[2]));
 	float asin_arg = 2.0f*(Filter->qCurrent[0]*Filter->qCurrent[2]-Filter->qCurrent[3]*Filter->qCurrent[1]);
 	asin_arg = asin_arg > 1.0f ? 1.0f : asin_arg;
 	asin_arg = asin_arg < -1.0f ? -1.0f : asin_arg;
-	euler[1] = asin(asin_arg);
-	euler[2] = atan2(2.0f*(Filter->qCurrent[0]*Filter->qCurrent[3]+Filter->qCurrent[1]*Filter->qCurrent[2]), 1.0f-2.0f*(Filter->qCurrent[2]*Filter->qCurrent[2]+Filter->qCurrent[3]*Filter->qCurrent[3]));
-	euler[0] *= 180.0/M_PI;
-	euler[1] *= 180.0/M_PI;
-	euler[2] *= 180.0/M_PI;
+	radians[1] = asin(asin_arg);
+	radians[2] = atan2(2.0f*(Filter->qCurrent[0]*Filter->qCurrent[3]+Filter->qCurrent[1]*Filter->qCurrent[2]), 1.0f-2.0f*(Filter->qCurrent[2]*Filter->qCurrent[2]+Filter->qCurrent[3]*Filter->qCurrent[3]));
+//	euler[0] *= 180.0/M_PI;
+//	euler[1] *= 180.0/M_PI;
+//	euler[2] *= 180.0/M_PI;
+}
+
+void getEulers(OFilter *Filter, float eulers[3]) {
+	eulers[0] = atan2(2.0f*(Filter->qCurrent[0]*Filter->qCurrent[1]+Filter->qCurrent[2]*Filter->qCurrent[3]), 1.0f-2.0f*(Filter->qCurrent[1]*Filter->qCurrent[1]+Filter->qCurrent[2]*Filter->qCurrent[2]));
+	float asin_arg = 2.0f*(Filter->qCurrent[0]*Filter->qCurrent[2]-Filter->qCurrent[3]*Filter->qCurrent[1]);
+	asin_arg = asin_arg > 1.0f ? 1.0f : asin_arg;
+	asin_arg = asin_arg < -1.0f ? -1.0f : asin_arg;
+	eulers[1] = asin(asin_arg);
+	eulers[2] = atan2(2.0f*(Filter->qCurrent[0]*Filter->qCurrent[3]+Filter->qCurrent[1]*Filter->qCurrent[2]), 1.0f-2.0f*(Filter->qCurrent[2]*Filter->qCurrent[2]+Filter->qCurrent[3]*Filter->qCurrent[3]));
+	eulers[0] *= 180.0/M_PI;
+	eulers[1] *= 180.0/M_PI;
+	eulers[2] *= 180.0/M_PI;
 }
 
 void getQuaternion(OFilter *Filter, float quat[4]) {

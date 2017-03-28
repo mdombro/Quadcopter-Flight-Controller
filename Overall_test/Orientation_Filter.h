@@ -63,7 +63,8 @@ extern void Orientation_Filter_Init(OFilter *Filter, float dt);
 extern void Orientation_Filter_Update(OFilter *Filter, float gyro[3], float accel[3], uint8_t noGyro);
 extern void AccelQ(OFilter *Filter, float accel[3]);
 extern void getQuaternion(OFilter *Filter, float quat[4]);
-extern void getEuler(OFilter *Filter, float euler[3]);
+extern void getRadians(OFilter *Filter, float radians[3]);
+extern void getEulers(OFilter *Filter, float eulers[3]);
 extern void SLERP(OFilter *Filter, float qOut[4], float qIn1[4], float qIn2[4], float gain);
 extern void medianFilter(OFilter *Filter, float accelFiltered[3], float accelRaw[3], float window[3][WINDOW_LENGTH]);
 
