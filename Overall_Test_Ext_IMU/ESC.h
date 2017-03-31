@@ -24,8 +24,8 @@
 #define PWM_CLOCK_FREQ 5000000
 #define PWM_FREQ 500
 #define PWM_PERIOD_TICKS (PWM_CLOCK_FREQ/PWM_FREQ)-1
-#define PWM_MIN_TICKS 5000  		// valid for PWM_CLOCK_FREQ of 5MHz only
-#define PWM_MAX_TICKS 9999
+#define PWM_MIN_TICKS 5000.0  		// valid for PWM_CLOCK_FREQ of 5MHz only
+#define PWM_MAX_TICKS 9999.0
 
 
 // --------------------- Function Prototype Definitions ----------------------------------------------//

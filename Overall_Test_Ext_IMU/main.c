@@ -52,7 +52,7 @@ float Map_f(float in, float inMin, float inMax, float outMin, float outMax);
 
 int32_t Map(int32_t in, int32_t inMin, int32_t inMax, int32_t outMin, int32_t outMax);
 
-int32_t Constrain(int32_t input, int32_t floor, int32_t ceiling);
+float Constrain(float input, float floor, float ceiling);
 
 void RxCapture();
 
@@ -79,14 +79,14 @@ float Abs(float in);
 #define AILERON_MIN 975.0
 #define ELEVATOR_MAX 1928.0
 #define ELEVATOR_MIN 991.0
-#define THROTTLE_MAX 1947
-#define THROTTLE_MIN 958
+#define THROTTLE_MAX 1947.0
+#define THROTTLE_MIN 958.0
 #define RUDDER_MAX 1966.0
 #define RUDDER_MIN 1028.0
 #define EMERGENCY_MAX 1909
 #define EMERGENCY_MIN 1033
 #define ANGLE_RATE_RANGE 250.0
-#define ANGLE_RANGE 25.0
+#define ANGLE_RANGE 20.0
 #define ANGLE_RUDDER_RATE_RANGE 220.0
 #define THROTTLE_THRESHOLD 20
 
@@ -141,7 +141,7 @@ PID AngleRoll;
 PID AnglePitch;
 PID AngleYaw;
 float RateRollOutput, RatePitchOutput, RateYawOutput;
-float aileron_f, elevator_f, rudder_f;
+float aileron_f, elevator_f, rudder_f, throttle_f;
 float aileronRate, elevatorRate, rudderRate;
 float radians[3];
 float yawTarget;
@@ -246,7 +246,7 @@ void RxCapture() {
 			rud_on = 0;
 			emerg_on = 0;
 			throttle = (TimerValueGet(TIMER0_BASE, TIMER_A) - throttle_start)*CLOCK_PERIOD;
-			throttle = Map(throttle, THROTTLE_MIN, THROTTLE_MAX, 0, 90);
+			throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, 0.0, 90.0);
 		}
 		else if (rud_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b10000)) {
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
@@ -420,29 +420,32 @@ void PIDUpdate() {
 	// need a way to match yaw when on ground to quad yaw - so that the quad does not spin immediately on power up
 
 
-	if (throttle > THROTTLE_THRESHOLD && !EMERGENCY) {
+	if (throttle_f > THROTTLE_THRESHOLD && !EMERGENCY) {
 		Compute(&AngleRoll);
 		Compute(&AnglePitch);
-		Compute(&AngleYaw);
-		if((rudder_f <= RUDDER_NULL_SIZE || rudder_f >= -RUDDER_NULL_SIZE) && throttle > THROTTLE_THRESHOLD-10) {
-			rudder_f = rudderAverage;
+//		Compute(&AngleYaw);
+//		if((rudder_f <= RUDDER_NULL_SIZE || rudder_f >= -RUDDER_NULL_SIZE) && throttle_f > THROTTLE_THRESHOLD) {
+//			rudder_f = rudderAverage;
+//		}
+//
+//		if ((rudder_f > RUDDER_NULL_SIZE || rudder_f < -RUDDER_NULL_SIZE) && throttle_f > THROTTLE_THRESHOLD) {
+//				rudderRate = rudder_f;
+//				yawTarget = Eulers[0];
+//				//WHICH ONE ARE YOU?!?!??! WHO DO I AVERAGE?!?!?!
+//		}
+//
+//		if(Abs(yawTarget-Eulers[0]) >= 180.0) {
+//			if(yawTarget-Eulers[0] >= 0.0) {
+//				yawTarget -= 360.0;
+//			}
+//			else if(yawTarget-Eulers[0] < 0.0) {
+//				yawTarget += 360.0;
+//			}
+//		}
+		if (rudder_f < RUDDER_NULL_SIZE && rudder_f > -RUDDER_NULL_SIZE) {
+				rudder_f = 0;
 		}
-
-		if ((rudder_f > RUDDER_NULL_SIZE || rudder_f < -RUDDER_NULL_SIZE) && throttle > THROTTLE_THRESHOLD) {
-				rudderRate = rudder_f;
-				yawTarget = Eulers[0];
-				//WHICH ONE ARE YOU?!?!??! WHO DO I AVERAGE?!?!?!
-			}
-
-		if(Abs(yawTarget-Eulers[0]) >= 180.0) {
-			if(yawTarget-Eulers[0] >= 0.0) {
-				yawTarget -= 360.0;
-			}
-			else if(yawTarget-Eulers[0] < 0.0) {
-				yawTarget += 360.0;
-			}
-		}
-
+		rudderRate = rudder_f;
 		Compute(&RateRoll);
 		Compute(&RatePitch);
 		Compute(&RateYaw);
@@ -452,10 +455,10 @@ void PIDUpdate() {
 // 		PWM4 - Back right
 		//YAW LEFT -> FRONT LEFT AND BACK RIGHT SPEED UP
 		//YAW R
-		writePWM1(Constrain(throttle - (int32_t)RateRollOutput - (int32_t)RatePitchOutput + (int32_t)RateYawOutput, THROTTLE_THRESHOLD-10, 100));  // Front left
-		writePWM2(Constrain(throttle - (int32_t)RateRollOutput + (int32_t)RatePitchOutput - (int32_t)RateYawOutput, THROTTLE_THRESHOLD-10, 100));
-		writePWM3(Constrain(throttle + (int32_t)RateRollOutput - (int32_t)RatePitchOutput - (int32_t)RateYawOutput, THROTTLE_THRESHOLD-10, 100));
-		writePWM4(Constrain(throttle + (int32_t)RateRollOutput + (int32_t)RatePitchOutput + (int32_t)RateYawOutput, THROTTLE_THRESHOLD-10, 100));
+		writePWM1(Constrain(throttle_f - RateRollOutput - RatePitchOutput + RateYawOutput, THROTTLE_THRESHOLD-10, 100));  // Front left
+		writePWM2(Constrain(throttle_f - RateRollOutput + RatePitchOutput - RateYawOutput, THROTTLE_THRESHOLD-10, 100));
+		writePWM3(Constrain(throttle_f + RateRollOutput - RatePitchOutput - RateYawOutput, THROTTLE_THRESHOLD-10, 100));
+		writePWM4(Constrain(throttle_f + RateRollOutput + RatePitchOutput + RateYawOutput, THROTTLE_THRESHOLD-10, 100));
 	}
 	else {
 		writePWM1(0);
@@ -463,7 +466,8 @@ void PIDUpdate() {
 		writePWM3(0);
 		writePWM4(0);
 	}
-	UARTprintf("%10d  %10d  %10d\n", (int)(rudder_f*1e3), (int)(yawTarget*1e3), (int)(Eulers[0]*1e3));
+	//UARTprintf("%10d  %10d  %10d\n", (int)(rudder_f*1e3), (int)(yawTarget*1e3), (int)(Eulers[0]*1e3));
+	UARTprintf("%d\n", throttle_f);
 }
 
 float Abs(float in) {
@@ -493,7 +497,7 @@ void IMUupdate() {
 // Constrain values to a given range
 //
 //*****************************************************************************
-int32_t Constrain(int32_t input, int32_t floor, int32_t ceiling) {
+float Constrain(float input, float floor, float ceiling) {
 	if (input > ceiling)
 		return ceiling;
 	else if (input < floor) {
@@ -593,7 +597,7 @@ main(void)
 
     PID_Make(&AngleRoll, &Eulers[2], &aileronRate, &aileron_f, 4.5, 0.05, 0, DIRECT);
     PID_Make(&AnglePitch, &Eulers[1], &elevatorRate, &elevator_f, 4.5, 0.05, 0, DIRECT);
-    PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 1.0, 0, 0.5, DIRECT);
+    PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.2, 0, 0.3, DIRECT);
     SetMode(&AngleRoll, AUTOMATIC);
 	SetMode(&AnglePitch, AUTOMATIC);
 	SetMode(&AngleYaw, AUTOMATIC);
@@ -637,6 +641,7 @@ main(void)
 	aileron = 0;
 	elevator = 0;
 	throttle = 0;
+	throttle_f = 0.0;
 	rudder = 0;
 	EMERGENCY = false;
 	rudderSamples[0] = rudderSamples[1] = rudderSamples[2] = rudderSamples[3] = rudderSamples[4] = 0;

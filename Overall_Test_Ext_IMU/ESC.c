@@ -7,23 +7,26 @@
 
 #include "ESC.h"
 
+int32_t Map_f_in_int_out(float in, float inMin, float inMax, float outMin, float outMax);
+int32_t map(int32_t in, int32_t inMin, int32_t inMax, int32_t outMin, int32_t outMax);
+
 void writePWM1(int32_t spd) {
-	int32_t val = Map(spd, 0, 100, PWM_MIN_TICKS, PWM_MAX_TICKS);
+	int32_t val = Map_f_in_int_out(spd, 0.0, 100.0, PWM_MIN_TICKS, PWM_MAX_TICKS);
 	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_2, val);
 }
 
 void writePWM2(int32_t spd) {
-	int32_t val = Map(spd, 0, 100, PWM_MIN_TICKS, PWM_MAX_TICKS);
+	int32_t val = Map_f_in_int_out(spd, 0.0, 100.0, PWM_MIN_TICKS, PWM_MAX_TICKS);
 	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_5, val);
 }
 
 void writePWM3(int32_t spd) {
-	int32_t val = Map(spd, 0, 100, PWM_MIN_TICKS, PWM_MAX_TICKS);
+	int32_t val = Map_f_in_int_out(spd, 0.0, 100.0, PWM_MIN_TICKS, PWM_MAX_TICKS);
 	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_6, val);
 }
 
 void writePWM4(int32_t spd) {
-	int32_t val = Map(spd, 0, 100, PWM_MIN_TICKS, PWM_MAX_TICKS);
+	int32_t val = Map_f_in_int_out(spd, 0.0, 100.0, PWM_MIN_TICKS, PWM_MAX_TICKS);
 	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_7, val);
 }
 
@@ -31,6 +34,10 @@ void writePWM4(int32_t spd) {
 // Even though identical to Map in main, this is the special map for PWM work
 int32_t map(int32_t in, int32_t inMin, int32_t inMax, int32_t outMin, int32_t outMax) {
 	return ((in - inMin)*(outMax - outMin) / (inMax - inMin)) + outMin;
+}
+
+int32_t Map_f_in_int_out(float in, float inMin, float inMax, float outMin, float outMax) {
+	return (int32_t)( ((in - inMin)*(outMax - outMin) / (inMax - inMin)) + outMin );
 }
 
 void ConfigurePWM() {
