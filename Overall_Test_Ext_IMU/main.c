@@ -45,6 +45,7 @@
 #include "ESC.h"
 #include "PID.h"
 #include "Adafruit_BNO055.h"
+#include "PulsedLight_driver.h"
 
 
 // Function prototypes
@@ -61,6 +62,8 @@ void initReceiver();
 void IMUupdate();
 
 float Abs(float in);
+
+void ReadPulsedLight();
 
 
 //******************************************************************************************
@@ -150,6 +153,14 @@ float rudderSamples[5];
 float yawSample[10];
 float rudderAverage;
 float yawAverage;
+
+//*****************************************************************************
+//
+// Pulsed Light distance variable
+// 		Distance given in cm
+//
+//*****************************************************************************
+volatile int16_t PulsedLightDistance;
 
 //*****************************************************************************
 //
@@ -467,7 +478,7 @@ void PIDUpdate() {
 		writePWM4(0);
 	}
 	//UARTprintf("%10d  %10d  %10d\n", (int)(rudder_f*1e3), (int)(yawTarget*1e3), (int)(Eulers[0]*1e3));
-	UARTprintf("%d\n", throttle_f);
+	//UARTprintf("%d\n", throttle_f);
 }
 
 float Abs(float in) {
@@ -487,9 +498,20 @@ void IMUupdate() {
 	}
 	getGyros(&BNO, Gyros);
 	Gyros[1] = -Gyros[1];
+	Gyros[0] -= 0.0097;
+	Gyros[1] -= -0.0084;
+	Gyros[2] -= 0.0099;
 	getEulers(&BNO, Eulers);
-	//UARTprintf("%4d  %4d  %4d  %4d  %4d  %4d\n", (int)(Eulers[0]*1e3), (int)(Eulers[1]*1e3), (int)(Eulers[2]*1e3), (int)(Gyros[0]*1e3), (int)(Gyros[1]*1e3), (int)(Gyros[2]*1e3));
+	Eulers[1] -= -0.9375;
+	Eulers[2] -= 0.6875;
+	//UARTprintf("%4d,%4d,%4d,%4d,%4d\n", (int)(Eulers[1]*1e7), (int)(Eulers[2]*1e7), (int)(Gyros[0]*1e7), (int)(Gyros[1]*1e7), (int)(Gyros[2]*1e7));
 	//UARTprintf("%4d %4d %4d\n", (int)(aileron_f*1e3), (int)(elevator_f*1e3), (int)(rudder_f*1e3));
+}
+
+void ReadPulsedLight() {
+	TimerIntClear(TIMER3_BASE, TIMER_TIMA_TIMEOUT);
+	PulsedLightDistance = ReadDistance();
+	UARTprintf("%4d\n", PulsedLightDistance);
 }
 
 //*****************************************************************************
@@ -607,6 +629,28 @@ main(void)
 
 	SysCtlDelay(100000); //80000000   800000
 
+	//**********************************************************
+	//
+	// Pulsed Light LIDAR init
+	//
+	//**********************************************************
+	PulsedLightInit();
+	PulsedLightDistance = 0;
+
+	//**********************************************************
+	//
+	// Pulsed Light Time Interrupt Config
+	//
+	//**********************************************************
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER3);
+	TimerConfigure(TIMER3_BASE, TIMER_CFG_PERIODIC);
+	uint32_t ui32Period3 = SysCtlClockGet() / 20;
+	TimerLoadSet(TIMER3_BASE, TIMER_A, ui32Period3 - 1);
+
+	IntPrioritySet(INT_TIMER3A, 0b00001000);
+	IntEnable(INT_TIMER3A);
+	TimerIntEnable(TIMER3_BASE, TIMER_TIMA_TIMEOUT);
+	IntMasterEnable();
 
 	//**********************************************************
 	//
@@ -618,11 +662,12 @@ main(void)
 
 	//**********************************************************
 	//
-	// Final enabling of interrupts
+	// Final enabling of timer interrupts
 	//
 	//**********************************************************
 	TimerEnable(TIMER1_BASE, TIMER_A);
 	TimerEnable(TIMER2_BASE, TIMER_A);
+	TimerEnable(TIMER3_BASE, TIMER_A);
 
 	//**********************************************************
 	//

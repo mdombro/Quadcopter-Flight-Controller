@@ -155,7 +155,7 @@ int main(void){
 	// Enable I2C1
 	ConfigureI2C1(true);
 
-	
+
 	BMP180Initialize(&BmpSensHub, 3);
 	BMP180GetCalVals(&BmpSensHub, &BmpSensHubCals);
 
