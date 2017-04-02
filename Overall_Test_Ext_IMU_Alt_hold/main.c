@@ -155,7 +155,8 @@ float rudderSamples[5];
 float yawSample[10];
 float rudderAverage;
 float yawAverage;
-float AltVelTarget;
+float AltHoldTarget;
+float AltHoldVelocity;
 
 //*****************************************************************************
 //
@@ -165,6 +166,9 @@ float AltVelTarget;
 //*****************************************************************************
 volatile int16_t PulsedLightDistance;
 volatile float altitude;
+volatile float throttle_PID;
+volatile int8_t count_alt;
+volatile bool alt_init_flag;
 
 //*****************************************************************************
 //
@@ -172,7 +176,6 @@ volatile float altitude;
 //
 //*****************************************************************************
 void RxCapture() {
-	IntMasterDisable();
 	//UARTprintf("%3d %3d %3d %3d %3d\n", aileron, elevator, throttle, rudder, EMERGENCY);
 	//GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_5, 255);
 	// Interrupt to handle receiver decoding
@@ -181,6 +184,7 @@ void RxCapture() {
 	// First channel is emergency stop - if its over a certain amount of time a global SYSTEM_OFF flag is set
 	// Other channels are proportional channels
 	// Will be scaled to whatever value is necessary for the application
+	IntPriorityMaskSet(0b00100000);
 	if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_2) == GPIO_PIN_2) {
 		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_2);  // Clear interrupt flag
 		// Aileron
@@ -261,7 +265,7 @@ void RxCapture() {
 			rud_on = 0;
 			emerg_on = 0;
 			throttle = (TimerValueGet(TIMER0_BASE, TIMER_A) - throttle_start)*CLOCK_PERIOD;
-			throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, 0.0, 90.0);
+			throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, -20.0, 20.0);
 		}
 		else if (rud_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b10000)) {
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
@@ -293,8 +297,10 @@ void RxCapture() {
 			emerg_on = 0;
 		}
 	}
+	//UARTprintf("%4d %4d\n", (int)throttle, EMERGENCY);
+	//UARTprintf("%4d\n",EMERGENCY);
 	//GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_5, 0);
-	IntMasterEnable();
+	IntPriorityMaskSet(0);
 }
 
 //*****************************************************************************
@@ -389,8 +395,6 @@ ConfigureUART(void)
 // PID compute and ESC update
 //
 //*****************************************************************************
-
-
 void PIDUpdate() {
 	TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
 	int i;
@@ -417,10 +421,22 @@ void PIDUpdate() {
 		elevator_f = 0;
 	}
 
-	// need a way to match yaw when on ground to quad yaw - so that the quad does not spin immediately on power up
+	if (!EMERGENCY) {
+		if (throttle_f > 10.0) {
+			AltHoldVelocity = throttle_f - 10.0;
+		}
+		else if (throttle_f < -10.0) {
+			AltHoldVelocity = throttle_f + 10.0;
+		}
+		else {
+			AltHoldVelocity = 0.0;
+		}
 
+		AltHoldTarget = AltHoldVelocity/50.0 + AltHoldTarget;
 
-	if (throttle_f > THROTTLE_THRESHOLD && !EMERGENCY) {
+		Compute(&AltHold);
+		UARTprintf("%4d  %4d  %4d\n", (int)(AltHoldTarget), (int)(AltHoldVelocity), (int)(throttle_PID));
+		throttle_PID = Constrain(throttle_PID, 10.0, 90.0);
 		Compute(&AngleRoll);
 		Compute(&AnglePitch);
 //		Compute(&AngleYaw);
@@ -437,10 +453,10 @@ void PIDUpdate() {
 // 		PWM4 - Back right
 		//YAW LEFT -> FRONT LEFT AND BACK RIGHT SPEED UP
 		//YAW R
-		writePWM1(Constrain(throttle_f - RateRollOutput - RatePitchOutput + RateYawOutput, THROTTLE_THRESHOLD-10, 100));  // Front left
-		writePWM2(Constrain(throttle_f - RateRollOutput + RatePitchOutput - RateYawOutput, THROTTLE_THRESHOLD-10, 100));
-		writePWM3(Constrain(throttle_f + RateRollOutput - RatePitchOutput - RateYawOutput, THROTTLE_THRESHOLD-10, 100));
-		writePWM4(Constrain(throttle_f + RateRollOutput + RatePitchOutput + RateYawOutput, THROTTLE_THRESHOLD-10, 100));
+		writePWM1(Constrain(throttle_PID - RateRollOutput - RatePitchOutput + RateYawOutput, 10, 100));  // Front left
+		writePWM2(Constrain(throttle_PID - RateRollOutput + RatePitchOutput - RateYawOutput, 10, 100));
+		writePWM3(Constrain(throttle_PID + RateRollOutput - RatePitchOutput - RateYawOutput, 10, 100));
+		writePWM4(Constrain(throttle_PID + RateRollOutput + RatePitchOutput + RateYawOutput, 10, 100));
 	}
 	else {
 		writePWM1(0);
@@ -449,7 +465,7 @@ void PIDUpdate() {
 		writePWM4(0);
 	}
 	//UARTprintf("%10d  %10d  %10d\n", (int)(rudder_f*1e3), (int)(yawTarget*1e3), (int)(Eulers[0]*1e3));
-	//UARTprintf("%d\n", throttle_f);
+	//UARTprintf("%d\n", (int)throttle_f);
 }
 
 float Abs(float in) {
@@ -463,6 +479,7 @@ float Abs(float in) {
 
 void IMUupdate() {
 	TimerIntClear(TIMER2_BASE, TIMER_TIMA_TIMEOUT);
+	IntPriorityMaskSet(0b00100000);
 	if(initYawCount > 0) {
 		initYawCount--;
 		yawTarget = Eulers[0];
@@ -475,6 +492,7 @@ void IMUupdate() {
 	getEulers(&BNO, Eulers);
 	Eulers[1] -= -0.9375;
 	Eulers[2] -= 0.6875;
+	IntPriorityMaskSet(0);
 	//UARTprintf("%4d,%4d,%4d,%4d,%4d\n", (int)(Eulers[1]*1e7), (int)(Eulers[2]*1e7), (int)(Gyros[0]*1e7), (int)(Gyros[1]*1e7), (int)(Gyros[2]*1e7));
 	//UARTprintf("%4d %4d %4d\n", (int)(aileron_f*1e3), (int)(elevator_f*1e3), (int)(rudder_f*1e3));
 }
@@ -493,7 +511,11 @@ void ReadPulsedLight() {
 	float theta = atan2(z,l);
 	//theta = (M_PI/2.0) - theta;
 	altitude = sin(theta)*(float)PulsedLightDistance;
-	UARTprintf("%4d  %4d\n", (int)(altitude), PulsedLightDistance);
+	if (count_alt < 0) {
+		alt_init_flag = true;
+	}
+	count_alt--;
+	//UARTprintf("%4d  %4d\n", (int)(altitude), PulsedLightDistance);
 	//UARTprintf("%4d\n",PulsedLightDistance);
 }
 
@@ -521,8 +543,22 @@ float Constrain(float input, float floor, float ceiling) {
 int
 main(void)
 {
+	aile_on = 0;
+	ele_on = 0;
+	thro_on = 0;
+	rud_on = 0;
+	emerg_on = 0;
+	aileron = 0;
+	elevator = 0;
+	throttle = 0;
+	throttle_f = 0.0;
+	rudder = 0;
+	EMERGENCY = true;
+	rudderSamples[0] = rudderSamples[1] = rudderSamples[2] = rudderSamples[3] = rudderSamples[4] = 0;
+
     // Setup the system clock to run at 40 Mhz from PLL with crystal reference
     SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_XTAL_16MHZ | SYSCTL_OSC_MAIN);
+
 
     //
     // Initialize the UART.
@@ -539,7 +575,7 @@ main(void)
 	uint32_t ui32Period = SysCtlClockGet() / PID_UPDATE_FREQUENCY;
 	TimerLoadSet(TIMER1_BASE, TIMER_A, ui32Period -1);
 
-	IntPrioritySet(INT_TIMER1A, 0b00100000);
+	IntPrioritySet(INT_TIMER1A, 0b01100000);
 	IntEnable(INT_TIMER1A);
 	TimerIntEnable(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
 
@@ -610,6 +646,10 @@ main(void)
 	SetOutputLimits(&AnglePitch, -ANGLE_RATE_RANGE, ANGLE_RATE_RANGE);
 	SetOutputLimits(&AngleYaw, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
 
+	PID_Make(&AltHold, &altitude, &throttle_PID, &AltHoldTarget, 5.0, 0.0, 0.0, DIRECT);
+	SetMode(&AltHold, AUTOMATIC);
+	SetOutputLimits(&AltHold, 10.0, 90.0);
+
 	SysCtlDelay(100000); //80000000   800000
 
 	//**********************************************************
@@ -630,7 +670,7 @@ main(void)
 	uint32_t ui32Period3 = SysCtlClockGet() / 50;
 	TimerLoadSet(TIMER3_BASE, TIMER_A, ui32Period3 - 1);
 
-	IntPrioritySet(INT_TIMER3A, 0b00001000);
+	IntPrioritySet(INT_TIMER3A, 0b11100000);
 	IntEnable(INT_TIMER3A);
 	TimerIntEnable(TIMER3_BASE, TIMER_TIMA_TIMEOUT);
 	IntMasterEnable();
@@ -643,14 +683,19 @@ main(void)
 	yawTarget = 0;
 	initYawCount = 100;
 
+
 	//**********************************************************
 	//
-	// Final enabling of timer interrupts
+	// Initialize PulsedLight readings and altitude target
 	//
 	//**********************************************************
-	TimerEnable(TIMER1_BASE, TIMER_A);
-	TimerEnable(TIMER2_BASE, TIMER_A);
 	TimerEnable(TIMER3_BASE, TIMER_A);
+
+	count_alt = 20;
+	alt_init_flag = false;
+	while (!alt_init_flag) {
+		AltHoldTarget = altitude;
+	}
 
 	//**********************************************************
 	//
@@ -659,21 +704,15 @@ main(void)
 	//**********************************************************
 	initReceiver();
 
+	//**********************************************************
+	//
+	// Final enabling of timer interrupts for PIDs and IMU
+	//
+	//**********************************************************
+	TimerEnable(TIMER1_BASE, TIMER_A);
+	TimerEnable(TIMER2_BASE, TIMER_A);
+
     IntMasterEnable();
-
-    aile_on = 0;
-	ele_on = 0;
-	thro_on = 0;
-	rud_on = 0;
-	emerg_on = 0;
-	aileron = 0;
-	elevator = 0;
-	throttle = 0;
-	throttle_f = 0.0;
-	rudder = 0;
-	EMERGENCY = false;
-	rudderSamples[0] = rudderSamples[1] = rudderSamples[2] = rudderSamples[3] = rudderSamples[4] = 0;
-
 
     uint32_t count = 0;
     while(1)
