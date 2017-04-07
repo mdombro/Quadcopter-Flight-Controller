@@ -98,9 +98,11 @@ void ReadPulsedLight();
 
 #define AILERON_NULL_SIZE 4
 #define ELEVATOR_NULL_SIZE 4
-#define RUDDER_NULL_SIZE 15
+#define RUDDER_NULL_SIZE 20 //15
 
-#define HOVER_OFFSET 54
+#define LPF_BETA 0.8
+
+#define OFF_LPF_BETA 0.05
 
 //*****************************************************************************
 //
@@ -160,8 +162,15 @@ float rudderSamples[5];
 float yawSample[10];
 float rudderAverage;
 float yawAverage;
+float throttleAverage;
+float hover_error;
+float p_hover;
 float AltHoldTarget;
+float prevAltHoldTarget;
 float AltHoldVelocity;
+volatile float throttle_PID;
+volatile float throttle_final;
+volatile float hover_offset;
 
 //*****************************************************************************
 //
@@ -170,10 +179,19 @@ float AltHoldVelocity;
 //
 //*****************************************************************************
 volatile int16_t PulsedLightDistance;
-volatile float altitude;
-volatile float throttle_PID;
+volatile float altitude, LPaltitude;
 volatile int8_t count_alt;
 volatile bool alt_init_flag;
+
+//*****************************************************************************
+//
+// Arming State Variables
+//
+//*****************************************************************************
+bool IS_ARMED;
+bool ARM_state_poll;
+uint32_t ARM_start;
+volatile float altitudeInit;
 
 //*****************************************************************************
 //
@@ -275,7 +293,7 @@ void RxCapture() {
 				alt_start_flag = false;
 			}
 			else if(ALTHOLD && !alt_start_flag) {
-				throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, -30.0, 30.0);
+				throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, -45.0, 45.0);
 			}
 			else {
 				throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, 0.0, 90.0);
@@ -420,59 +438,76 @@ ConfigureUART(void)
 //*****************************************************************************
 void PIDUpdate() {
 	TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
-	int i;
-	for(i = 0; i < 5; i++) {
-		if(i+1 < 5) {
-			rudderSamples[i] = rudderSamples[i+1];
+	if (IS_ARMED) {
+		int i;
+		for(i = 0; i < 5; i++) {
+			if(i+1 < 5) {
+				rudderSamples[i] = rudderSamples[i+1];
+			}
+			else {
+				rudderSamples[i] = rudder_f;
+			}
+		}
+
+		int sum = 0;
+		for(i = 0; i < 5; i++) {
+				sum = sum+rudderSamples[i];
+			}
+		rudderAverage = sum/5.0;
+
+		// Adding null zone for input channel roll, pitch, yaw
+		if (aileron_f < AILERON_NULL_SIZE && aileron_f > -AILERON_NULL_SIZE) {
+			aileron_f = 0;
+		}
+		if (elevator_f < ELEVATOR_NULL_SIZE && elevator_f > -ELEVATOR_NULL_SIZE) {
+			elevator_f = 0;
+		}
+
+		if(ALTHOLD && alt_start_flag) {
+			SetMode(&AltHold, AUTOMATIC);
+		}
+		else if(!ALTHOLD) {
+			SetMode(&AltHold, MANUAL);
+		}
+
+		if(ALTHOLD) {
+			if (throttle_f > 10.0) {
+				AltHoldVelocity = throttle_f - 10.0;
+			}
+			else if (throttle_f < -10.0) {
+				AltHoldVelocity = throttle_f + 10.0;
+			}
+			else {
+				AltHoldVelocity = 0.0;
+			}
+			prevAltHoldTarget = AltHoldTarget;
+			AltHoldTarget = AltHoldVelocity/50.0 + AltHoldTarget;
+
+			Compute(&AltHold);
+			//throttleAverage = throttleAverage-(OFF_LPF_BETA*(throttleAverage-throttle_PID));
+			throttle_PID = throttle_PID + hover_offset;
+			throttle_PID = Constrain(throttle_PID, 20.0, 90.0);
+			throttle_final = throttle_PID;
+//			if(AltHoldTarget == prevAltHoldTarget) {
+//				hover_error = throttleAverage;
+//				hover_offset = hover_offset + p_hover*hover_error;
+//			}
 		}
 		else {
-			rudderSamples[i] = rudder_f;
-		}
-	}
-
-	int sum = 0;
-	for(i = 0; i < 5; i++) {
-			sum = sum+rudderSamples[i];
-		}
-	rudderAverage = sum/5.0;
-
-	// Adding null zone for input channel roll, pitch, yaw
-	if (aileron_f < AILERON_NULL_SIZE && aileron_f > -AILERON_NULL_SIZE) {
-		aileron_f = 0;
-	}
-	if (elevator_f < ELEVATOR_NULL_SIZE && elevator_f > -ELEVATOR_NULL_SIZE) {
-		elevator_f = 0;
-	}
-	if(ALTHOLD && alt_start_flag) {
-		SetMode(&AltHold, AUTOMATIC);
-	}
-	else if(!ALTHOLD) {
-		SetMode(&AltHold, MANUAL);
-	}
-	if(ALTHOLD) {
-		if (throttle_f > 10.0) {
-			AltHoldVelocity = throttle_f - 10.0;
-		}
-		else if (throttle_f < -10.0) {
-			AltHoldVelocity = throttle_f + 10.0;
-		}
-		else {
-			AltHoldVelocity = 0.0;
+			AltHoldTarget = LPaltitude;
+			throttle_final = throttle_f;
 		}
 
-		AltHoldTarget = AltHoldVelocity/50.0 + AltHoldTarget;
-
-		Compute(&AltHold);
-		//UARTprintf("%4d  %4d  %4d\n", (int)(AltHoldTarget), (int)(AltHoldVelocity), (int)(throttle_PID));
-		throttle_PID = throttle_PID + HOVER_OFFSET;
-		throttle_PID = Constrain(throttle_PID, 20.0, 90.0);
 		Compute(&AngleRoll);
 		Compute(&AnglePitch);
-		//Compute(&AngleYaw);
-		if (rudder_f < RUDDER_NULL_SIZE && rudder_f > -RUDDER_NULL_SIZE) {
-				rudder_f = 0;
+//		Compute(&AngleYaw);
+		if ((rudder_f < RUDDER_NULL_SIZE && rudder_f > -RUDDER_NULL_SIZE)) {
+				rudderRate = 0;
 		}
-		rudderRate = rudder_f;
+		else {
+			rudderRate = rudder_f;
+			yawTarget = Eulers[0];
+		}
 		Compute(&RateRoll);
 		Compute(&RatePitch);
 		Compute(&RateYaw);
@@ -480,41 +515,16 @@ void PIDUpdate() {
 	//	PWM2 - Back left
 	//	PWM3 - Front right
 	//	PWM4 - Back right
-		//YAW LEFT -> FRONT LEFT AND BACK RIGHT SPEED UP
-		//YAW R
-		writePWM1(Constrain(throttle_PID - RateRollOutput - RatePitchOutput + RateYawOutput, 15, 100));  // Front left
-		writePWM2(Constrain(throttle_PID - RateRollOutput + RatePitchOutput - RateYawOutput, 15, 100));
-		writePWM3(Constrain(throttle_PID + RateRollOutput - RatePitchOutput - RateYawOutput, 15, 100));
-		writePWM4(Constrain(throttle_PID + RateRollOutput + RatePitchOutput + RateYawOutput, 15, 100));
-		//UARTprintf("%d\n", (int)(throttle_f));
-		//UARTprintf("%10d  %10d  %10d\n", (int)(rudder_f*1e3), (int)(yawTarget*1e3), (int)(Eulers[0]*1e3));
-		//UARTprintf("%d\n", (int)throttle_f);
+		writePWM1(Constrain(throttle_final - RateRollOutput - RatePitchOutput + RateYawOutput, 15, 100));  // Front left
+		writePWM2(Constrain(throttle_final - RateRollOutput + RatePitchOutput - RateYawOutput, 15, 100));
+		writePWM3(Constrain(throttle_final + RateRollOutput - RatePitchOutput - RateYawOutput, 15, 100));
+		writePWM4(Constrain(throttle_final + RateRollOutput + RatePitchOutput + RateYawOutput, 15, 100));
 	}
 	else {
-		AltHoldTarget = altitude;
-		Compute(&AngleRoll);
-		Compute(&AnglePitch);
-		//Compute(&AngleYaw);
-		if (rudder_f < RUDDER_NULL_SIZE && rudder_f > -RUDDER_NULL_SIZE) {
-				rudder_f = 0;
-		}
-		rudderRate = rudder_f;
-		Compute(&RateRoll);
-		Compute(&RatePitch);
-		Compute(&RateYaw);
-	//	PWM1 - Front Left
-	//	PWM2 - Back left
-	//	PWM3 - Front right
-	//	PWM4 - Back right
-		//YAW LEFT -> FRONT LEFT AND BACK RIGHT SPEED UP
-		//YAW R
-		writePWM1(Constrain(throttle_f - RateRollOutput - RatePitchOutput + RateYawOutput, 15, 100));  // Front left
-		writePWM2(Constrain(throttle_f - RateRollOutput + RatePitchOutput - RateYawOutput, 15, 100));
-		writePWM3(Constrain(throttle_f + RateRollOutput - RatePitchOutput - RateYawOutput, 15, 100));
-		writePWM4(Constrain(throttle_f + RateRollOutput + RatePitchOutput + RateYawOutput, 15, 100));
-		//UARTprintf("%d\n", (int)(throttle_f));
-		//UARTprintf("%10d  %10d  %10d\n", (int)(rudder_f*1e3), (int)(yawTarget*1e3), (int)(Eulers[0]*1e3));
-		//UARTprintf("%d\n", (int)throttle_f);
+		writePWM1(0);  // Front left
+		writePWM2(0);
+		writePWM3(0);
+		writePWM4(0);
 	}
 }
 
@@ -561,11 +571,12 @@ void ReadPulsedLight() {
 	float theta = atan2(z,l);
 	//theta = (M_PI/2.0) - theta;
 	altitude = sin(theta)*(float)PulsedLightDistance;
+	LPaltitude = LPaltitude-(LPF_BETA*(LPaltitude-altitude));
 	if (count_alt < 0) {
 		alt_init_flag = true;
 	}
 	count_alt--;
-	UARTprintf("%4d  %4d\n", (int)(altitude), PulsedLightDistance);
+	//UARTprintf("%4d  %4d\n", (int)(altitude), PulsedLightDistance);
 	//UARTprintf("%4d\n",PulsedLightDistance);
 }
 
@@ -606,7 +617,17 @@ main(void)
 	ALTHOLD = false;
 	alt_start_flag = false;
 	alt_start_1 = false;
+	LPaltitude = 0;
+	throttle_final = 0;
+	throttleAverage = 0.0;
+	hover_error = 0;
+	p_hover = 0.01;
+	hover_offset = 54;
 	rudderSamples[0] = rudderSamples[1] = rudderSamples[2] = rudderSamples[3] = rudderSamples[4] = 0;
+
+	IS_ARMED = false;
+	ARM_state_poll = false;
+
 
     // Setup the system clock to run at 40 Mhz from PLL with crystal reference
     SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_XTAL_16MHZ | SYSCTL_OSC_MAIN);
@@ -698,11 +719,11 @@ main(void)
 	SetOutputLimits(&AnglePitch, -ANGLE_RATE_RANGE, ANGLE_RATE_RANGE);
 	SetOutputLimits(&AngleYaw, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
 
-	PID_Make(&AltHold, &altitude, &throttle_PID, &AltHoldTarget, 2.0, 0.0, 8.0, DIRECT);
+	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 1.0, DIRECT);
 	SetMode(&AltHold, MANUAL);
 	SetOutputLimits(&AltHold, -20.0, 20.0);
 
-	SysCtlDelay(4000000); //80000000   800000
+	SysCtlDelay(6000000); //80000000   800000
 
 	//**********************************************************
 	//
@@ -746,8 +767,9 @@ main(void)
 	count_alt = 20;
 	alt_init_flag = false;
 	while (!alt_init_flag) {
-		AltHoldTarget = altitude;
+		AltHoldTarget = LPaltitude;
 	}
+	altitudeInit = LPaltitude;
 
 	//**********************************************************
 	//
@@ -764,21 +786,55 @@ main(void)
 	TimerEnable(TIMER1_BASE, TIMER_A);
 	TimerEnable(TIMER2_BASE, TIMER_A);
 
+	//**********************************************************
+	//
+	// Arm state poll timer
+	//
+	//**********************************************************
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
+	TimerConfigure(TIMER4_BASE, TIMER_CFG_PERIODIC);
+	//TimerLoadSet(TIMER4_BASE, TIMER_A, );
+	TimerEnable(TIMER4_BASE, TIMER_A);
+
+//	IntPrioritySet(INT_TIMER3A, 0b11100000);
+//	IntEnable(INT_TIMER3A);
+//	TimerIntEnable(TIMER3_BASE, TIMER_TIMA_TIMEOUT);
+//	IntMasterEnable();
+
     IntMasterEnable();
 
     uint32_t count = 0;
     while(1)
     {
+    	// No throttle and rudder right - arming sequence
+
+    	if (throttle < THROTTLE_MIN + 110 && rudder > RUDDER_MAX - 100 && !IS_ARMED) {
+    		//TimerLoadSet(TIMER4_BASE, TIMER_A, 200000);
+    		//TimerEnable(TIMER4_BASE, TIMER_A);
+    		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
+    		while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 40000000) {
+    			if (throttle < THROTTLE_MIN + 110 && rudder > RUDDER_MAX - 100) ARM_state_poll = true;
+    			else {ARM_state_poll = false; break;}
+    		}
+    		if (ARM_state_poll) IS_ARMED = true;
+    		//TimerDisable(TIMER4_BASE, TIMER_A);
+    	}
+    	// No throttle and rudder left - disarming sequence
+    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && IS_ARMED && LPaltitude <= altitudeInit+5) {
+    		//TimerLoadSet(TIMER4_BASE, TIMER_A, 200000);
+			//TimerEnable(TIMER4_BASE, TIMER_A);
+    		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
+			while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 40000000) {
+				if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100) ARM_state_poll = true;
+				else {ARM_state_poll = false; break;}
+			}
+			if (ARM_state_poll) IS_ARMED = false;
+			//TimerDisable(TIMER4_BASE, TIMER_A);
+    	}
 //    	count++;
-//    	if (count == 70000) {
+//    	if (count == 30000) {
 //    		count = 0;
-//    		//IntMasterDisable();
-//    		//UARTprintf("%d\n", throttle);
-//    		//UARTprintf("%d  %d  %d\n", (int)(pfGyro[0]*1e4), (int)(1e4*pfGyro[1]), (int)(1e4*pfGyro[2]));
-//    		//UARTprintf("%4d\n", (int)(RateRollOutput*1e4));
-//    		UARTprintf("%d\n", (int)(aileron_f*1e3));
-//    		//UARTprintf("%4d\n", (int)(pfGyro[1]*1e4));
-//    		//IntMasterEnable();
+//    		UARTprintf("%d %d %d\n", IS_ARMED, throttle, rudder);
 //    	}
 
 	}
