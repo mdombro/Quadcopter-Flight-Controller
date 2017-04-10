@@ -69,7 +69,7 @@ void UARTInt(void) {
 	uint16_t terminationPos = UARTPeek('\r');
 	//UARTprintf("%d\n", terminationPos);
 	if (terminationPos == 11) {
-		UARTgets(&RxBuffer, 12);
+		UARTgets(RxBuffer, 12);
 		if (RxBuffer[0] == 0xAA && RxBuffer[1] == 0xAA) {
 			state = RxBuffer[2];
 			yaw = (RxBuffer[3] << 8) | RxBuffer[4];

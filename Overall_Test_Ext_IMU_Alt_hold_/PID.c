@@ -139,12 +139,12 @@ void SetOutputLimits(PID *pid, float Min, float Max)
  ******************************************************************************/
 void SetMode(PID *pid, int Mode)
 {
-    bool newAuto = (Mode == AUTOMATIC);
-    if(newAuto == !pid->inAuto)
-    {  /*we just went from manual to auto*/
-        Initialize(pid);
-    }
-    pid->inAuto = newAuto;
+	bool newAuto = (Mode == AUTOMATIC);
+	if(newAuto == !pid->inAuto)
+	{  /*we just went from manual to auto*/
+		Initialize(pid);
+	}
+	pid->inAuto = newAuto;
 }
 
 /* Initialize()****************************************************************

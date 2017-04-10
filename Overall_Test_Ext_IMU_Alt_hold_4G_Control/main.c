@@ -136,7 +136,7 @@ float Gyros[3];
 // Global variables to hold Receiver Values
 //
 //*****************************************************************************
-volatile int32_t aileron, elevator, throttle, rudder, Switch, aileron_start, elevator_start, throttle_start, rudder_start, althold_start;
+volatile int32_t aileron, elevator, throttle, rudder, Switch, aileron_start, elevator_start, throttle_start, rudder_start, switch_start;
 volatile uint8_t aile_on, ele_on, thro_on, rud_on, Switch_on;
 volatile bool SWITCH;
 volatile bool alt_start_flag;
@@ -187,6 +187,7 @@ volatile float altitude, LPaltitude;
 volatile int8_t count_alt;
 volatile bool alt_init_flag;
 volatile bool ALT_prev;
+volatile bool ALTHOLD;
 
 //*****************************************************************************
 //
@@ -207,8 +208,9 @@ char RxBuffer[20];
 uint8_t GLOBAL_SOURCE_STATE;
 bool GLOBAL_SHUTDOWN;
 bool GLOBAL_ARMED;
-uint16_t GLOBAL_YAW, GLOBAL_THROTTLE, GLOBAL_ROLL, GLOBAL_PITCH;
+float GLOBAL_YAW, GLOBAL_THROTTLE, GLOBAL_ROLL, GLOBAL_PITCH;
 uint16_t Pi_yaw, Pi_throttle, Pi_roll, Pi_pitch;
+uint8_t state;
 
 void PiUARTInt() {
 	TimerIntClear(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
@@ -216,10 +218,10 @@ void PiUARTInt() {
 	//UARTprintf("1 2 3 4 5 6 7 8 9 10 11 12 13\n");
 	uint16_t terminationPos = UARTPeek('\r');
 	//UARTprintf("%d\n", terminationPos);
-	if (terminationPos == 11) {
-		UARTgets(&RxBuffer, 12);
+	if (terminationPos == 10) {
+		UARTgets(RxBuffer, 11);
 		if (RxBuffer[0] == 0xAA) {
-			state = RxBuffer[2];
+			state = RxBuffer[1];
 			//if (!(state & 0b00000001)) GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
 			//else GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
 			if(state & 0b01000000) GLOBAL_ARMED = true;
@@ -228,10 +230,10 @@ void PiUARTInt() {
 			else GLOBAL_SHUTDOWN = false;
 
 			//if (GLOBAL_SOURCE_STATE == GAME_PAD_CONTROL) {
-			Pi_yaw = (RxBuffer[3] << 8) | RxBuffer[4];
-			Pi_throttle = (RxBuffer[5] << 8) | RxBuffer[6];
-			Pi_roll = (RxBuffer[7] << 8) | RxBuffer[8];
-			Pi_pitch = (RxBuffer[9] << 8) | RxBuffer[10];
+			Pi_yaw = (RxBuffer[2] << 8) | RxBuffer[3];
+			Pi_throttle = (RxBuffer[4] << 8) | RxBuffer[5];
+			Pi_roll = (RxBuffer[6] << 8) | RxBuffer[7];
+			Pi_pitch = (RxBuffer[8] << 8) | RxBuffer[9];
 			//}
 		}
 		//UARTprintf("%d\n", pitch);
@@ -487,18 +489,18 @@ void PIDUpdate() {
 	TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
 
 	if (Switch > 1500) {
-		GLOBAL_SOURCE_SET = TX_CONTROL;
+		GLOBAL_SOURCE_STATE = TX_CONTROL;
 	}
 	else {
-		GLOBAL_SOURCE_SET = GAME_PAD_CONTROL;
+		GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
 	}
 
 	if (GLOBAL_SOURCE_STATE == GAME_PAD_CONTROL) {
 		GLOBAL_YAW = Map_f( (float)(Pi_yaw), 0, 65535,  ANGLE_RUDDER_RATE_RANGE, -ANGLE_RUDDER_RATE_RANGE);
-		if (ALT_HOLD) {
+		if (ALTHOLD) {
 			GLOBAL_THROTTLE = Map_f( (float)(Pi_throttle), 0, 65535, -45.0 , 45.0);
 		}
-		else if (!ALT_HOLD) {
+		else if (!ALTHOLD) {
 			GLOBAL_THROTTLE = Map_f( (float)(Pi_throttle), 0, 65535, 10.0, 90.0);
 		}
 		GLOBAL_ROLL = Map_f( (float)(Pi_roll), 0, 65535, -ANGLE_RANGE, ANGLE_RANGE);
@@ -510,6 +512,8 @@ void PIDUpdate() {
 		GLOBAL_ROLL = Map_f((float)aileron, AILERON_MIN, AILERON_MAX, ANGLE_RANGE, -ANGLE_RANGE);
 		GLOBAL_PITCH = Map_f((float)elevator, ELEVATOR_MIN, ELEVATOR_MAX, -ANGLE_RANGE, ANGLE_RANGE);
 	}
+
+	UARTprintf("%d %d %d %d\n", (int)GLOBAL_YAW, (int)GLOBAL_THROTTLE, (int)GLOBAL_ROLL, (int)GLOBAL_PITCH);
 
 	if (GLOBAL_ARMED) {
 		int i;
@@ -878,9 +882,9 @@ main(void)
 	uint32_t ui32Period5 = SysCtlClockGet() / 100;
 	TimerLoadSet(TIMER5_BASE, TIMER_A, ui32Period5 - 1);
 
-	IntPrioritySet(INT_TIMER3A, 0b00100000);
+	IntPrioritySet(INT_TIMER5A, 0b00100000);
 	//IntRegister(INT_TIMER3A, UARTInt);
-	TimerIntRegister(TIMER5_BASE, TIMER_A, UARTInt);
+	TimerIntRegister(TIMER5_BASE, TIMER_A, PiUARTInt);
 	IntEnable(INT_TIMER5A);
 	TimerIntEnable(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
 
