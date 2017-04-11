@@ -100,7 +100,7 @@ void ReadPulsedLight();
 #define ELEVATOR_NULL_SIZE 4
 #define RUDDER_NULL_SIZE 20 //15
 
-#define LPF_BETA 0.75
+#define LPF_BETA 0.85
 
 #define OFF_LPF_BETA 0.05
 
@@ -442,9 +442,11 @@ void PIDUpdate() {
 	TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
 
 	//Int to float conversion of receiver inputs
+	IntMasterDisable();
 	aileron_f = Map_f((float)aileron, AILERON_MIN, AILERON_MAX, ANGLE_RANGE, -ANGLE_RANGE);
 	elevator_f = Map_f((float)elevator, ELEVATOR_MIN, ELEVATOR_MAX, -ANGLE_RANGE, ANGLE_RANGE);
 	rudder_f = Map_f((float)rudder, RUDDER_MIN, RUDDER_MAX, ANGLE_RUDDER_RATE_RANGE, -ANGLE_RUDDER_RATE_RANGE);
+	IntMasterEnable();
 
 	//Throttle dependent on ALTHOLD flag & alt_start_flag. Determines which range the throttle should be mapped to
 //	if(ALTHOLD && alt_start_flag) {
@@ -575,7 +577,7 @@ float Abs(float in) {
 
 void IMUupdate() {
 	TimerIntClear(TIMER2_BASE, TIMER_TIMA_TIMEOUT);
-	IntPriorityMaskSet(0b00100000);
+	IntPriorityMaskSet(0b01000000);
 	if(initYawCount > 0) {
 		initYawCount--;
 		yawTarget = Eulers[0];

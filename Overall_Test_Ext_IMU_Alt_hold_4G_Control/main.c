@@ -28,6 +28,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include "inc/hw_memmap.h"
 #include "inc/hw_ints.h"
 #include "driverlib/debug.h"
@@ -211,17 +212,74 @@ bool GLOBAL_ARMED;
 float GLOBAL_YAW, GLOBAL_THROTTLE, GLOBAL_ROLL, GLOBAL_PITCH;
 uint16_t Pi_yaw, Pi_throttle, Pi_roll, Pi_pitch;
 uint8_t state;
+//char* bitties;
 
 void PiUARTInt() {
 	TimerIntClear(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
-	IntPriorityMaskSet(0b01100000);
+	IntPriorityMaskSet(0b01000000);
+	UARTEchoSet(false);
+	//IntMasterDisable();
+//	uint8_t fucker[10];
+//	int i;
+//	for(i = 0; i < 10; i++) {
+//		fucker[i] = 0xFF;
+//	}
+
+//	if(UARTRxBytesAvail() > 0) {
+//		//UARTFlushTx(true);
+//		char hey[3] = "HEY";
+//		UARTprintf("%s",hey);
+//		UARTFlushRx();
+////		uint8_t sizer = UARTRxBytesAvail();
+////		UARTwrite(&sizer,1);
+//	}
+//
+	//if(UARTRxBytesAvail() > 0) {
+//		//uint8_t fuck[2] = {0x30, 0x0A};
+//		UARTFlushTx(true);
+//		UARTwrite(*fucker, 10);
+////		UARTgets(RxBuffer, 18);
+////		if(sizeof(RxBuffer) > 0) {
+////			UARTFlushTx(true);
+////		}
+//	}
 	//UARTprintf("1 2 3 4 5 6 7 8 9 10 11 12 13\n");
-	uint16_t terminationPos = UARTPeek('\r');
-	//UARTprintf("%d\n", terminationPos);
-	if (terminationPos == 10) {
-		UARTgets(RxBuffer, 11);
-		if (RxBuffer[0] == 0xAA) {
-			state = RxBuffer[1];
+	//UARTFlushTx(true);
+	int i = 1;
+	char bitties[256] = {};
+	char terminationPos = (char) UARTPeek((char)0x0a);
+	if (UARTRxBytesAvail() >= 22) {
+		char checker = 'n';
+		while(checker != (char) 0xaa) checker = UARTgetc();
+		bitties[0] = checker;
+		while(UARTRxBytesAvail() > 0 ){
+			//terminationPos = (char) UARTPeek('\r');
+			bitties[i] = UARTgetc();//(char) UARTgets(bitties, (uint32_t) 256);
+			//char middleman = bitties[i];
+			//UARTwrite(bitties + sizeof(char)*i, 1);
+			//UARTwrite(&terminationPos,1);
+			i++;
+			//UARTwrite(&terminationPos, 1);
+		}
+	}
+	//UARTgets(bitties,(int)terminationPos+1);
+	//UARTwrite(&bitties[0], 1);
+	//if(UARTRxBytesAvail() > 0) {
+//		UARTgets(bitties,terminationPos);
+//		char string[6] = "Rec s:";
+//		UARTwrite(string, 6);
+//		uint8_t ack[3] = {RxBuffer[terminationPos-3], RxBuffer[terminationPos-2], RxBuffer[terminationPos-1]};
+//		UARTwrite(ack,3);
+		//UARTFlushRx();
+	//}
+
+	//UARTFlushRx();
+
+	//if (terminationPos == 10) {
+	if (i != 0) {
+		//UARTgets(RxBuffer, 11);
+		if (bitties[0] == 0xAA) {
+			state = bitties[1];
 			//if (!(state & 0b00000001)) GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
 			//else GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
 			if(state & 0b01000000) GLOBAL_ARMED = true;
@@ -230,14 +288,32 @@ void PiUARTInt() {
 			else GLOBAL_SHUTDOWN = false;
 
 			//if (GLOBAL_SOURCE_STATE == GAME_PAD_CONTROL) {
-			Pi_yaw = (RxBuffer[2] << 8) | RxBuffer[3];
-			Pi_throttle = (RxBuffer[4] << 8) | RxBuffer[5];
-			Pi_roll = (RxBuffer[6] << 8) | RxBuffer[7];
-			Pi_pitch = (RxBuffer[8] << 8) | RxBuffer[9];
-			//}
+			Pi_yaw = (bitties[2] << 8) | bitties[3];
+			Pi_throttle = (bitties[4] << 8) | bitties[5];
+			Pi_roll = (bitties[6] << 8) | bitties[7];
+			Pi_pitch = (bitties[8] << 8) | bitties[9];
+
+			}
+
+			//UARTFlushRx();
+//			uint8_t lit[10];
+//			uint8_t i;
+//			for (i = 0; i < 10; i++) {
+//				lit[i] = 0xFF;
+//			}
+//			UARTwrite(lit, 10);
 		}
 		//UARTprintf("%d\n", pitch);
-	}
+	//}
+//	UARTFlushTx(false);
+	//char fuck[2] = {0x30, 0x0A};
+	//UARTFlushTx(false);
+	//UARTwrite(*fuck, 1);
+	//UARTwrite(&fuck, 2);
+	//UARTFlushRx();
+//	uint8_t ack[2] = {RxBuffer[0], 0x0A};
+//	UARTwrite(ack,2);
+	//IntMasterEnable();
 	IntPriorityMaskSet(0);
 }
 
@@ -477,7 +553,7 @@ ConfigureUART(void)
     //
     // Initialize the UART for console I/O.
     //
-    UARTStdioConfig(0, 115200, 16000000);
+    UARTStdioConfig(0, 9600, 16000000);
 }
 
 //*****************************************************************************
@@ -513,7 +589,7 @@ void PIDUpdate() {
 		GLOBAL_PITCH = Map_f((float)elevator, ELEVATOR_MIN, ELEVATOR_MAX, -ANGLE_RANGE, ANGLE_RANGE);
 	}
 
-	UARTprintf("%d %d %d %d\n", (int)GLOBAL_YAW, (int)GLOBAL_THROTTLE, (int)GLOBAL_ROLL, (int)GLOBAL_PITCH);
+	//UARTprintf("%d %d %d %d\n", (int)GLOBAL_YAW, (int)GLOBAL_THROTTLE, (int)GLOBAL_ROLL, (int)GLOBAL_PITCH);
 
 	if (GLOBAL_ARMED) {
 		int i;
@@ -526,11 +602,13 @@ void PIDUpdate() {
 			}
 		}
 
+
 		int sum = 0;
 		for(i = 0; i < 5; i++) {
 				sum = sum+rudderSamples[i];
 			}
 		rudderAverage = sum/5.0;
+
 
 		// Adding null zone for input channel roll, pitch, yaw
 		if (GLOBAL_ROLL < AILERON_NULL_SIZE && GLOBAL_ROLL > -AILERON_NULL_SIZE) {
@@ -617,7 +695,7 @@ float Abs(float in) {
 
 void IMUupdate() {
 	TimerIntClear(TIMER2_BASE, TIMER_TIMA_TIMEOUT);
-	IntPriorityMaskSet(0b00100000);
+	IntPriorityMaskSet(0b01100000);
 	if(initYawCount > 0) {
 		initYawCount--;
 		yawTarget = Eulers[0];
@@ -713,6 +791,7 @@ main(void)
 	ARM_state_poll = false;
 
 	GLOBAL_ARMED = false;
+	//bitties = malloc( sizeof(char) * 256 );
 
 
     // Setup the system clock to run at 40 Mhz from PLL with crystal reference
@@ -889,6 +968,7 @@ main(void)
 	TimerIntEnable(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
 
 	TimerEnable(TIMER5_BASE, TIMER_A);
+	UARTEchoSet(false);
 
 	//**********************************************************
 	//
@@ -912,7 +992,7 @@ main(void)
     {
     	// No throttle and rudder right - arming sequence
 
-    	if (throttle < THROTTLE_MIN + 110 && rudder > RUDDER_MAX - 100 && !IS_ARMED) {
+    	if (throttle < THROTTLE_MIN + 110 && rudder > RUDDER_MAX - 100 && !GLOBAL_ARMED) {
     		//TimerLoadSet(TIMER4_BASE, TIMER_A, 200000);
     		//TimerEnable(TIMER4_BASE, TIMER_A);
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
@@ -924,7 +1004,7 @@ main(void)
     		//TimerDisable(TIMER4_BASE, TIMER_A);
     	}
     	// No throttle and rudder left - disarming sequence
-    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && IS_ARMED && LPaltitude <= altitudeInit+5) {
+    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && GLOBAL_ARMED && LPaltitude <= altitudeInit+50) {
     		//TimerLoadSet(TIMER4_BASE, TIMER_A, 200000);
 			//TimerEnable(TIMER4_BASE, TIMER_A);
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
