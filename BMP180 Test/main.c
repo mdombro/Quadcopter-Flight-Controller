@@ -25,7 +25,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
-
+#include <math.h>
 #include "inc/hw_ints.h"
 #include "inc/hw_i2c.h"
 #include "inc/hw_memmap.h"
@@ -44,12 +44,16 @@
 #include "bmpLib.h"
 
 
+//Prototypes------------------------------------------------------------------------------------------
+void PressuretoAlt(int32_t pressure);
 
 
 // Defines -------------------------------------------------------------------------------------------
 #define LED_RED GPIO_PIN_1
 #define LED_BLUE GPIO_PIN_2
 #define LED_GREEN GPIO_PIN_3
+
+#define BOT -.2840437333
 
 
 
@@ -60,6 +64,12 @@ uint32_t printValue[2];
 // Initialize BMP180 and get calibration data
 tBMP180 BmpSensHub;
 tBMP180Cals BmpSensHubCals;
+volatile float altitudeBaro;
+volatile float initialTemp;
+volatile bool cal_init_flag;
+int8_t count;
+int32_t staticPressure;
+
 
 // Functions -----------------------------------------------------------------------------------------
 void ConfigureUART(void){
@@ -99,7 +109,6 @@ void ConfigureI2C1(bool fastMode){
 	else{
 		I2CMasterInitExpClk(I2C1_BASE, SysCtlClockGet(), false);
 	}
-
 }
 
 void FloatToPrint(float floatValue, uint32_t splitValue[2]){
@@ -119,10 +128,13 @@ void FloatToPrint(float floatValue, uint32_t splitValue[2]){
 }
 
 
-
-
 // Main ----------------------------------------------------------------------------------------------
 int main(void){
+
+	count = 20;
+	cal_init_flag = false;
+	staticPressure = 0;
+	initialTemp = 0;
 
 	// Enable lazy stacking
 	FPUEnable();
@@ -155,7 +167,6 @@ int main(void){
 	// Enable I2C1
 	ConfigureI2C1(true);
 
-
 	BMP180Initialize(&BmpSensHub, 3);
 	BMP180GetCalVals(&BmpSensHub, &BmpSensHubCals);
 
@@ -169,6 +180,15 @@ int main(void){
 	BMP180GetRawTempStart();
 	BMP180GetRawPressureStart(BmpSensHub.oversamplingSetting);
 
+	while(!cal_init_flag) {
+
+	}
+	staticPressure = BmpSensHub.pressure;
+	initialTemp = BmpSensHub.temp/10.0;
+	initialTemp = initialTemp+273.15;
+	UARTprintf("Pressure: %d\n",staticPressure);
+	UARTprintf("Temperature: %d\n",(int)initialTemp);
+
 	while(1){
 
 	}
@@ -181,14 +201,32 @@ void BMP180ReadISR(void) {
 	TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 	// Get & print temperature
 	BMP180GetTemp(&BmpSensHub, &BmpSensHubCals);
-	FloatToPrint(BmpSensHub.temp, printValue);
-	UARTprintf("%d.%03d, ",printValue[0], printValue[1]);
+	//FloatToPrint(BmpSensHub.temp, printValue);
+	//UARTprintf("%d.%03d, ",printValue[0], printValue[1]);
 
 	// Get & print pressure
+	//BMP180GetTemp(&BmpSensHub, &BmpSensHubCals);
 	BMP180GetPressure(&BmpSensHub, &BmpSensHubCals);
-	UARTprintf("%d\n", BmpSensHub.pressure);
+	PressuretoAlt(BmpSensHub.pressure);
+	//UARTprintf("%d\n", (int)(BmpSensHub.temp/10));
+	//UARTprintf("%d\n", BmpSensHub.pressure);
+	UARTprintf("%d\n", (int)(altitudeBaro));
 
 	// initiate another sample to read next time around
 	BMP180GetRawTempStart();
 	BMP180GetRawPressureStart(BmpSensHub.oversamplingSetting);
+	if(count == 0) {
+		cal_init_flag = true;
+	}
+	count--;
+}
+
+void PressuretoAlt(int32_t pressure) {
+
+	//float top = 8.3144598*initialTemp;
+	//altitudeBaro = (log((float)pressure/staticPressure)*(top/BOT))/100;
+
+	//GOTTA FIGURE OUT THE UNITS OF PRESSURE TO DETERMINE IF A GAIN FACOTR IS NEEDED
+	float pressure_f = (float)pressure;
+	altitudeBaro = (1-powf(pressure_f/101325,0.190294))*44330;
 }

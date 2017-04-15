@@ -246,19 +246,21 @@ void PiUARTInt() {
 	//UARTprintf("1 2 3 4 5 6 7 8 9 10 11 12 13\n");
 	//UARTFlushTx(true);
 	int i = 1;
+	//uint8_t count;
 	char bitties[256] = {};
 	char terminationPos = (char) UARTPeek((char)0x0a);
 	if (UARTRxBytesAvail() >= 22) {
 		char checker = 'n';
 		while(checker != (char) 0xaa) checker = UARTgetc();
 		bitties[0] = checker;
-		while(UARTRxBytesAvail() > 0 ){
+		//while(UARTRxBytesAvail() > 0 ){
+		for (i = 1; i < 11; i++) {
 			//terminationPos = (char) UARTPeek('\r');
 			bitties[i] = UARTgetc();//(char) UARTgets(bitties, (uint32_t) 256);
 			//char middleman = bitties[i];
 			//UARTwrite(bitties + sizeof(char)*i, 1);
 			//UARTwrite(&terminationPos,1);
-			i++;
+			//i++;
 			//UARTwrite(&terminationPos, 1);
 		}
 	}
@@ -276,7 +278,7 @@ void PiUARTInt() {
 	//UARTFlushRx();
 
 	//if (terminationPos == 10) {
-	if (i != 0) {
+	if (i > 1) {
 		//UARTgets(RxBuffer, 11);
 		if (bitties[0] == 0xAA) {
 			state = bitties[1];
@@ -288,12 +290,12 @@ void PiUARTInt() {
 			else GLOBAL_SHUTDOWN = false;
 
 			//if (GLOBAL_SOURCE_STATE == GAME_PAD_CONTROL) {
-			Pi_yaw = (bitties[2] << 8) | bitties[3];
-			Pi_throttle = (bitties[4] << 8) | bitties[5];
-			Pi_roll = (bitties[6] << 8) | bitties[7];
-			Pi_pitch = (bitties[8] << 8) | bitties[9];
+			Pi_yaw = (bitties[2] << 8) | bitties[7];
+			Pi_throttle = (bitties[4] << 8) | bitties[9];
+			Pi_roll = (bitties[6] << 8) | bitties[3];
+			Pi_pitch = (bitties[8] << 8) | bitties[5];
 
-			}
+		}
 
 			//UARTFlushRx();
 //			uint8_t lit[10];
@@ -760,7 +762,7 @@ float Constrain(float input, float floor, float ceiling) {
 int
 main(void)
 {
-	aile_on = 0;
+ 	aile_on = 0;
 	ele_on = 0;
 	thro_on = 0;
 	rud_on = 0;

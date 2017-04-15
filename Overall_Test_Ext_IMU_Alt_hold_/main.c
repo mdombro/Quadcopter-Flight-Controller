@@ -126,7 +126,10 @@ Adafruit_BNO055 BNO;
 //*****************************************************************************
 float Eulers[3];
 float Gyros[3];
-
+float rollOff;
+float pitchOff;
+float yawOff;
+bool init_flag;
 //*****************************************************************************
 //
 // Global variables to hold Receiver Values
@@ -318,7 +321,7 @@ void RxCapture() {
 			rud_on = 0;
 			althold_on = 0;
 			althold = (TimerValueGet(TIMER0_BASE, TIMER_A) - althold_start)*CLOCK_PERIOD;
-//			UARTprintf("%d\n", althold);
+			//UARTprintf("%d\n", althold);
 //			if (althold > 1500) {
 //				ALTHOLD = true;
 //				if (!alt_start_1) {
@@ -582,16 +585,30 @@ void IMUupdate() {
 		initYawCount--;
 		yawTarget = Eulers[0];
 	}
+
 	getGyros(&BNO, Gyros);
+	getEulers(&BNO, Eulers);
+
+	if(!init_flag) {
+		init_flag = true;
+		rollOff = Eulers[2];
+		pitchOff = Eulars[1];
+		yawOff = Eulers[0];
+	}
+	else {
+		rollOff = (rollOff+Eulers[2]);
+		pitchOff = (pitchOff+Eulers[1]);
+		yawOff = (yawOff+Eulers[0]);
+	}
 	Gyros[1] = -Gyros[1];
 	Gyros[0] -= 0.0097;
 	Gyros[1] -= -0.0084;
 	Gyros[2] -= 0.0099;
-	getEulers(&BNO, Eulers);
+
 	Eulers[1] -= -0.9375;
 	Eulers[2] -= 0.6875;
 	IntPriorityMaskSet(0);
-	//UARTprintf("%4d,%4d,%4d,%4d,%4d\n", (int)(Eulers[1]*1e7), (int)(Eulers[2]*1e7), (int)(Gyros[0]*1e7), (int)(Gyros[1]*1e7), (int)(Gyros[2]*1e7));
+	//UARTprintf("%8d,%8d,%4d,%4d,%4d\n", (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1), (int)(Gyros[0]*1e4), (int)(Gyros[1]*1e4), (int)(Gyros[2]*1e4));
 	//UARTprintf("%4d %4d %4d\n", (int)(aileron_f*1e3), (int)(elevator_f*1e3), (int)(rudder_f*1e3));
 }
 
@@ -614,7 +631,7 @@ void ReadPulsedLight() {
 		alt_init_flag = true;
 	}
 	count_alt--;
-	//UARTprintf("%4d  %4d\n", (int)(altitude), PulsedLightDistance);
+	UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
 //	UARTprintf("%4d\n",PulsedLightDistance);
 }
 
@@ -661,6 +678,7 @@ main(void)
 	hover_error = 0;
 	p_hover = 0.01;
 	hover_offset = 54;
+	init_flag = false;
 	rudderSamples[0] = rudderSamples[1] = rudderSamples[2] = rudderSamples[3] = rudderSamples[4] = 0;
 
 	IS_ARMED = false;
@@ -759,7 +777,7 @@ main(void)
 
 	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 1.0, DIRECT);
 	SetMode(&AltHold, MANUAL);
-	SetOutputLimits(&AltHold, -20.0, 20.0);
+	SetOutputLimits(&AltHold, -45.0, 45.0);
 
 	SysCtlDelay(6000000); //80000000   800000
 
@@ -858,11 +876,11 @@ main(void)
     		//TimerDisable(TIMER4_BASE, TIMER_A);
     	}
     	// No throttle and rudder left - disarming sequence
-    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && IS_ARMED && LPaltitude <= altitudeInit+50) {
+    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && IS_ARMED && LPaltitude <= altitudeInit+100) {
     		//TimerLoadSet(TIMER4_BASE, TIMER_A, 200000);
 			//TimerEnable(TIMER4_BASE, TIMER_A);
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
-			while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 40000000) {
+			while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 10000000) {
 				if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100) ARM_state_poll = true;
 				else {ARM_state_poll = false; break;}
 			}
