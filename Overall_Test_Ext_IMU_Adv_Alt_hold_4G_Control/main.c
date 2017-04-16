@@ -557,7 +557,6 @@ void PIDUpdate() {
 	}
 
 	//UARTprintf("%d %d %d %d\n", (int)GLOBAL_YAW, (int)GLOBAL_THROTTLE, (int)GLOBAL_ROLL, (int)GLOBAL_PITCH);
-
 	if (GLOBAL_ARMED) {
 		int i;
 		for(i = 0; i < 5; i++) {
@@ -591,9 +590,13 @@ void PIDUpdate() {
 		}
 		else if(!ALTHOLD) {
 			SetMode(&AltHold, MANUAL);
+			throttle_PID = 0;
 		}
 
 		if (ALTHOLD && ALT_prev == true) {
+
+			//THIS IS TESTING PURPOSE
+			GLOBAL_THROTTLE = Map_f((float)(throttle), THROTTLE_MIN, THROTTLE_MAX, -45.0 , 45.0);
 			if (GLOBAL_THROTTLE > 10.0) {
 				AltHoldVelocity = GLOBAL_THROTTLE - 10.0;
 			}
@@ -673,13 +676,25 @@ void IMUupdate() {
 		yawTarget = Eulers[0];
 	}
 	getGyros(&BNO, Gyros);
-	Gyros[1] = -Gyros[1];
-	Gyros[0] -= 0.0097;
-	Gyros[1] -= -0.0084;
-	Gyros[2] -= 0.0099;
 	getEulers(&BNO, Eulers);
-	Eulers[1] -= -0.9375;
-	Eulers[2] -= 0.6875;
+
+//*****************************************************************************
+//
+// DO NOT FOR THE LOVE OF GOD I MEAN FOR THE LOVE OF GOD CHANGE THIS
+//
+//*****************************************************************************
+	Gyros[1] = -Gyros[1];
+//*****************************************************************************
+//
+// THE ABOVE LINE IS SACRED...IT RUNS THE UNIVERSE
+//
+//*****************************************************************************
+
+//	Gyros[0] -= 0.0097;
+//	Gyros[1] -= -0.0084;
+//	Gyros[2] -= 0.0099;
+//	Eulers[1] -= -0.9375;
+//	Eulers[2] -= 0.6875;
 	IntPriorityMaskSet(0);
 	//UARTprintf("%4d,%4d,%4d,%4d,%4d\n", (int)(Eulers[1]*1e7), (int)(Eulers[2]*1e7), (int)(Gyros[0]*1e7), (int)(Gyros[1]*1e7), (int)(Gyros[2]*1e7));
 	//UARTprintf("%4d %4d %4d\n", (int)(aileron_f*1e3), (int)(elevator_f*1e3), (int)(GLOBAL_ROLL*1e3));
@@ -709,7 +724,8 @@ void ReadPulsedLight() {
 		alt_init_flag = true;
 	}
 	count_alt--;
-	//UARTprintf("%4d  %4d\n", (int)(altitude), PulsedLightDistance);
+	UARTprintf("Fuck You\n");
+	UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
 	//UARTprintf("%4d\n",PulsedLightDistance);
 }
 
@@ -809,7 +825,7 @@ main(void)
 	throttle = 0;
 	throttle_f = 0.0;
 	rudder = 0;
-	ALTHOLD = false;
+	ALTHOLD = true;
 	alt_start_flag = false;
 	alt_start_1 = false;
 	LPaltitude = 0;
@@ -831,6 +847,8 @@ main(void)
 	ARM_state_poll = false;
 
 	GLOBAL_ARMED = false;
+
+	FPUEnable();
 	//bitties = malloc( sizeof(char) * 256 );
 
 
@@ -875,6 +893,7 @@ main(void)
 	}
 	delay(100);
 	setExtCrystalUse(&BNO, true);
+	setSensorOffsets(&BNO);
 	setMode(&BNO, OPERATION_MODE_NDOF);
 
 	//**********************************************************
@@ -930,7 +949,7 @@ main(void)
 	SetOutputLimits(&AnglePitch, -ANGLE_RATE_RANGE, ANGLE_RATE_RANGE);
 	SetOutputLimits(&AngleYaw, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
 
-	PID_Make(&AltHold, &altitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 1.0, DIRECT);
+	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 1.0, DIRECT);
 	SetMode(&AltHold, MANUAL);
 	SetOutputLimits(&AltHold, -20.0, 20.0);
 
@@ -951,12 +970,11 @@ main(void)
 	//**********************************************************
 
 	//Dunno if the FPUEnable() and FPULazyStackingEnable() are necessary...
-	FPUEnable();
-	FPULazyStackingEnable();
-	BMP180Initialize(&BmpSensHub,3);
-	BMP180GetCalVals(&BmpSensHub, &BmpSensHubCals);
-	BMP180GetRawTempStart();
-	BMP180GetRawPressureStart(BmpSensHub.oversamplingSetting);
+//	FPULazyStackingEnable();
+//	BMP180Initialize(&BmpSensHub,3);
+//	BMP180GetCalVals(&BmpSensHub, &BmpSensHubCals);
+//	BMP180GetRawTempStart();
+//	BMP180GetRawPressureStart(BmpSensHub.oversamplingSetting);
 
 	//**********************************************************
 	//
@@ -978,18 +996,18 @@ main(void)
 	// BMP180 Barometer Timer Interrupt Configuration
 	//
 	//**********************************************************
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
-	TimerConfigure(TIMER1_BASE, TIMER_CFG_PERIODIC);
-	uint32_t ui32Period1B = (SysCtlClockGet()) / 50;
-	TimerLoadSet(TIMER1_BASE, TIMER_B, ui32Period1B -1);
-
-	IntPrioritySet(INT_TIMER1B, 0b11000000);
-	IntEnable(INT_TIMER1B);
-	TimerIntEnable(TIMER1_BASE, TIMER_TIMB_TIMEOUT);
-	IntMasterEnable();
-
-	// Enable I2C
-	ConfigureI2C1(true);
+//	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
+//	TimerConfigure(TIMER1_BASE, TIMER_CFG_PERIODIC);
+//	uint32_t ui32Period1B = (SysCtlClockGet()) / 50;
+//	TimerLoadSet(TIMER1_BASE, TIMER_B, ui32Period1B -1);
+//
+//	IntPrioritySet(INT_TIMER1B, 0b11000000);
+//	IntEnable(INT_TIMER1B);
+//	TimerIntEnable(TIMER1_BASE, TIMER_TIMB_TIMEOUT);
+//	IntMasterEnable();
+//
+//	// Enable I2C
+//	ConfigureI2C1(true);
 
 	//**********************************************************
 	//
@@ -1010,7 +1028,7 @@ main(void)
 	alt_init_flag = false;
 
 	while (!alt_init_flag) {
-		//AltHoldTarget = LPaltitude;
+		AltHoldTarget = LPaltitude;
 	}
 	altitudeInit = LPaltitude;
 
@@ -1019,14 +1037,14 @@ main(void)
 	//Initialize BMP180 readings and reference measurement
 	//
 	//**********************************************************
-	TimerEnable(TIMER1_BASE, TIMER_B);
-
-	count_altBar = 20;
-	alt_initBar_flag = false;
-
-	while(!alt_initBar_flag) {
-		AltHoldTarget = altitude;
-	}
+//	TimerEnable(TIMER1_BASE, TIMER_B);
+//
+//	count_altBar = 20;
+//	alt_initBar_flag = false;
+//
+//	while(!alt_initBar_flag) {
+//		AltHoldTarget = altitude;
+//	}
 
 	//**********************************************************
 	//
@@ -1048,19 +1066,19 @@ main(void)
 	// Pi UART Initialization
 	//
 	//**********************************************************
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER5);
-	TimerConfigure(TIMER5_BASE, TIMER_CFG_PERIODIC);
-	uint32_t ui32Period5 = SysCtlClockGet() / 100;
-	TimerLoadSet(TIMER5_BASE, TIMER_A, ui32Period5 - 1);
-
-	IntPrioritySet(INT_TIMER5A, 0b00100000);
-	//IntRegister(INT_TIMER3A, UARTInt);
-	TimerIntRegister(TIMER5_BASE, TIMER_A, PiUARTInt);
-	IntEnable(INT_TIMER5A);
-	TimerIntEnable(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
-
-	TimerEnable(TIMER5_BASE, TIMER_A);
-	UARTEchoSet(false);
+//	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER5);
+//	TimerConfigure(TIMER5_BASE, TIMER_CFG_PERIODIC);
+//	uint32_t ui32Period5 = SysCtlClockGet() / 100;
+//	TimerLoadSet(TIMER5_BASE, TIMER_A, ui32Period5 - 1);
+//
+//	IntPrioritySet(INT_TIMER5A, 0b00100000);
+//	//IntRegister(INT_TIMER3A, UARTInt);
+//	TimerIntRegister(TIMER5_BASE, TIMER_A, PiUARTInt);
+//	IntEnable(INT_TIMER5A);
+//	TimerIntEnable(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
+//
+//	TimerEnable(TIMER5_BASE, TIMER_A);
+//	UARTEchoSet(false);
 
 	//**********************************************************
 	//
@@ -1096,11 +1114,11 @@ main(void)
     		//TimerDisable(TIMER4_BASE, TIMER_A);
     	}
     	// No throttle and rudder left - disarming sequence
-    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && GLOBAL_ARMED && LPaltitude <= altitudeInit+50) {
+    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && GLOBAL_ARMED && LPaltitude <= altitudeInit+100) {
     		//TimerLoadSet(TIMER4_BASE, TIMER_A, 200000);
 			//TimerEnable(TIMER4_BASE, TIMER_A);
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
-			while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 40000000) {
+			while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 10000000) {
 				if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100) ARM_state_poll = true;
 				else {ARM_state_poll = false; break;}
 			}

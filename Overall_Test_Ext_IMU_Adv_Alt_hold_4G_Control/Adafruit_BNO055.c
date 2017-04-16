@@ -246,6 +246,7 @@ void getEulers(Adafruit_BNO055 *BNO, float *xyz) {
 	readLen(BNO055_EULER_H_LSB_ADDR, buffer, 6);
 	I2CWait();
 
+
 	x = ((int16_t)buffer[0]) | (((int16_t)buffer[1]) << 8);
 	y = ((int16_t)buffer[2]) | (((int16_t)buffer[3]) << 8);
 	z = ((int16_t)buffer[4]) | (((int16_t)buffer[5]) << 8);
@@ -277,6 +278,92 @@ void getGyros(Adafruit_BNO055 *BNO, float *xyz) {
 	xyz[1] = ((float)y)/16.0;
 	xyz[2] = ((float)z)/16.0;
 
+}
+
+/**************************************************************************/
+/*!
+@brief  Writes to the sensor's offset registers from an offset struct
+*/
+/**************************************************************************/
+void setSensorOffsets(Adafruit_BNO055 *BNO)
+{
+    adafruit_bno055_opmode_t lastMode = BNO->_mode;
+    setMode(BNO, OPERATION_MODE_CONFIG);
+    delay(25);
+
+    write8(ACCEL_OFFSET_X_LSB_ADDR, (accel_x) & 0x0FF);
+    I2CWait();
+    write8(ACCEL_OFFSET_X_MSB_ADDR, (accel_x >> 8) & 0x0FF);
+    I2CWait();
+    write8(ACCEL_OFFSET_Y_LSB_ADDR, (accel_y) & 0x0FF);
+    I2CWait();
+    write8(ACCEL_OFFSET_Y_MSB_ADDR, (accel_y >> 8) & 0x0FF);
+    I2CWait();
+    write8(ACCEL_OFFSET_Z_LSB_ADDR, (accel_z) & 0x0FF);
+    I2CWait();
+    write8(ACCEL_OFFSET_Z_MSB_ADDR, (accel_z >> 8) & 0x0FF);
+    I2CWait();
+
+    write8(GYRO_OFFSET_X_LSB_ADDR, (gyro_x) & 0x0FF);
+    I2CWait();
+    write8(GYRO_OFFSET_X_MSB_ADDR, (gyro_x >> 8) & 0x0FF);
+    I2CWait();
+    write8(GYRO_OFFSET_Y_LSB_ADDR, (gyro_y) & 0x0FF);
+    I2CWait();
+    write8(GYRO_OFFSET_Y_MSB_ADDR, (gyro_y >> 8) & 0x0FF);
+    I2CWait();
+    write8(GYRO_OFFSET_Z_LSB_ADDR, (gyro_z) & 0x0FF);
+    I2CWait();
+    write8(GYRO_OFFSET_Z_MSB_ADDR, (gyro_z >> 8) & 0x0FF);
+    I2CWait();
+
+    write8(MAG_OFFSET_X_LSB_ADDR, (mag_x) & 0x0FF);
+    I2CWait();
+    write8(MAG_OFFSET_X_MSB_ADDR, (mag_x >> 8) & 0x0FF);
+    I2CWait();
+    write8(MAG_OFFSET_Y_LSB_ADDR, (mag_y) & 0x0FF);
+    I2CWait();
+    write8(MAG_OFFSET_Y_MSB_ADDR, (mag_y >> 8) & 0x0FF);
+    I2CWait();
+    write8(MAG_OFFSET_Z_LSB_ADDR, (mag_z) & 0x0FF);
+    I2CWait();
+    write8(MAG_OFFSET_Z_MSB_ADDR, (mag_z >> 8) & 0x0FF);
+    I2CWait();
+
+    write8(ACCEL_RADIUS_LSB_ADDR, (accel_r) & 0x0FF);
+    I2CWait();
+    write8(ACCEL_RADIUS_MSB_ADDR, (accel_r >> 8) & 0x0FF);
+    I2CWait();
+
+    write8(MAG_RADIUS_LSB_ADDR, (mag_r) & 0x0FF);
+    I2CWait();
+    write8(MAG_RADIUS_MSB_ADDR, (mag_r >> 8) & 0x0FF);
+    I2CWait();
+
+    setMode(BNO, lastMode);
+}
+
+/**************************************************************************/
+/*!
+    @brief  Gets current calibration state.  Each value should be a uint8_t
+            pointer and it will be set to 0 if not calibrated and 3 if
+            fully calibrated.
+*/
+/**************************************************************************/
+void getCalibration(uint8_t* sys, uint8_t* gyro, uint8_t* accel, uint8_t* mag) {
+  uint8_t calData = read8(BNO055_CALIB_STAT_ADDR);
+  if (sys != NULL) {
+    *sys = (calData >> 6) & 0x03;
+  }
+  if (gyro != NULL) {
+    *gyro = (calData >> 4) & 0x03;
+  }
+  if (accel != NULL) {
+    *accel = (calData >> 2) & 0x03;
+  }
+  if (mag != NULL) {
+    *mag = calData & 0x03;
+  }
 }
 
 /**************************************************************************/

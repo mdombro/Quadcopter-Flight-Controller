@@ -629,7 +629,7 @@ void IMUupdate() {
 	IntPriorityMaskSet(0);
 	uint8_t sys, gyro, accel, mag;
 	getCalibration(&sys, &gyro, &accel, &mag);
-	UARTprintf("$%d %d;", (int)throttle_final, (int)throttle_PID);
+	//UARTprintf("$%d %d;", (int)throttle_final, (int)throttle_PID);
 	//UARTprintf("%d  %d  %d  %d\n", sys, gyro, accel, mag);
 	//UARTprintf("%8d   ,%8d,   %8d,   %4d,   %4d,   %4d\n",(int)(Eulers[0]*1e1), (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1), (int)(Gyros[0]*1e4), (int)(Gyros[1]*1e4), (int)(Gyros[2]*1e4));
 	//UARTprintf("$%d %d %d %d;", (int)(Eulers[0]*1e1), (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1) );
@@ -655,7 +655,7 @@ void ReadPulsedLight() {
 		alt_init_flag = true;
 	}
 	count_alt--;
-	//UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
+	UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
 //	UARTprintf("%4d\n",PulsedLightDistance);
 }
 
