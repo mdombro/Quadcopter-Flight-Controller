@@ -52,6 +52,24 @@ typedef struct
     uint16_t mag_radius;
 } adafruit_bno055_offsets_t;
 
+enum OFFSET {
+
+	accel_x = 7,
+	accel_y = 9,
+	accel_z = 16,
+	accel_r = 1000,
+
+	gyro_x = 0,
+	gyro_y = 65534,
+	gyro_z = 2,
+
+	mag_x = 65180,
+	mag_y = 125,
+	mag_z = 203,
+	mag_r = 629
+
+};
+
 typedef enum
 {
   /* Page id register definition */
@@ -285,6 +303,7 @@ extern void  setExtCrystalUse    (Adafruit_BNO055 *BNO, bool usextal);
 extern void  getSystemStatus     (Adafruit_BNO055 *BNO, uint8_t *system_status,
 							uint8_t *self_test_result,
 							uint8_t *system_error);
+extern void getCalibration(uint8_t* sys, uint8_t* gyro, uint8_t* accel, uint8_t* mag);
 extern void getEulers(Adafruit_BNO055 *BNO, float *xyz);
 extern void getGyros(Adafruit_BNO055 *BNO, float *xyz);
 extern void  displaySystemStatus ( void );
@@ -303,7 +322,7 @@ extern int8_t          getTemp   ( void );
 //bool  getSensorOffsets(uint8_t* calibData);
 //bool  getSensorOffsets(adafruit_bno055_offsets_t &offsets_type);
 //void  setSensorOffsets(const uint8_t* calibData);
-//void  setSensorOffsets(const adafruit_bno055_offsets_t &offsets_type);
+void  setSensorOffsets(Adafruit_BNO055 *BNO);
 //bool  isFullyCalibrated(void);
 
 extern uint8_t  read8   ( adafruit_bno055_reg_t );

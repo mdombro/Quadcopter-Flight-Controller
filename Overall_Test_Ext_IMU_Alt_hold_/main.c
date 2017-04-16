@@ -445,11 +445,11 @@ void PIDUpdate() {
 	TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
 
 	//Int to float conversion of receiver inputs
-	IntMasterDisable();
+	//IntMasterDisable();
 	aileron_f = Map_f((float)aileron, AILERON_MIN, AILERON_MAX, ANGLE_RANGE, -ANGLE_RANGE);
 	elevator_f = Map_f((float)elevator, ELEVATOR_MIN, ELEVATOR_MAX, -ANGLE_RANGE, ANGLE_RANGE);
 	rudder_f = Map_f((float)rudder, RUDDER_MIN, RUDDER_MAX, ANGLE_RUDDER_RATE_RANGE, -ANGLE_RUDDER_RATE_RANGE);
-	IntMasterEnable();
+	//IntMasterEnable();
 
 	//Throttle dependent on ALTHOLD flag & alt_start_flag. Determines which range the throttle should be mapped to
 //	if(ALTHOLD && alt_start_flag) {
@@ -476,6 +476,7 @@ void PIDUpdate() {
 	else if(althold < 1500) {
 		ALTHOLD = false;
 		SetMode(&AltHold,MANUAL);
+		throttle_PID = 0;
 		//alt_start_1 = false;
 	}
 
@@ -543,7 +544,7 @@ void PIDUpdate() {
 		Compute(&AnglePitch);
 //		Compute(&AngleYaw);
 		if ((rudder_f < RUDDER_NULL_SIZE && rudder_f > -RUDDER_NULL_SIZE)) {
-				rudderRate = 0;
+			rudderRate = 0;
 		}
 		else {
 			rudderRate = rudder_f;
@@ -589,26 +590,49 @@ void IMUupdate() {
 	getGyros(&BNO, Gyros);
 	getEulers(&BNO, Eulers);
 
-	if(!init_flag) {
-		init_flag = true;
-		rollOff = Eulers[2];
-		pitchOff = Eulars[1];
-		yawOff = Eulers[0];
-	}
-	else {
-		rollOff = (rollOff+Eulers[2]);
-		pitchOff = (pitchOff+Eulers[1]);
-		yawOff = (yawOff+Eulers[0]);
-	}
-	Gyros[1] = -Gyros[1];
-	Gyros[0] -= 0.0097;
-	Gyros[1] -= -0.0084;
-	Gyros[2] -= 0.0099;
 
-	Eulers[1] -= -0.9375;
-	Eulers[2] -= 0.6875;
+//*****************************************************************************
+//
+// Offset
+//
+//*****************************************************************************
+//	if(!init_flag) {
+//		init_flag = true;
+//		rollOff = Eulers[2];
+//		pitchOff = Eulers[1];
+//		yawOff = Eulers[0];
+//	}
+//	else {
+//		rollOff = (rollOff+Eulers[2]);
+//		pitchOff = (pitchOff+Eulers[1]);
+//		yawOff = (yawOff+Eulers[0]);
+//	}
+
+//*****************************************************************************
+//
+// DO NOT FOR THE LOVE OF GOD I MEAN FOR THE LOVE OF GOD CHANGE THIS
+//
+//*****************************************************************************
+	Gyros[1] = -Gyros[1];
+//*****************************************************************************
+//
+// THE ABOVE LINE IS SACRED...IT RUNS THE UNIVERSE
+//
+//*****************************************************************************
+
+	//	Gyros[0] -= 0.0097;
+//	Gyros[1] -= -0.0084;
+//	Gyros[2] -= 0.0099;
+
+//	Eulers[1] -= -0.9375;
+//	Eulers[2] -= 0.6875;
 	IntPriorityMaskSet(0);
-	//UARTprintf("%8d,%8d,%4d,%4d,%4d\n", (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1), (int)(Gyros[0]*1e4), (int)(Gyros[1]*1e4), (int)(Gyros[2]*1e4));
+	uint8_t sys, gyro, accel, mag;
+	getCalibration(&sys, &gyro, &accel, &mag);
+	UARTprintf("$%d %d;", (int)throttle_final, (int)throttle_PID);
+	//UARTprintf("%d  %d  %d  %d\n", sys, gyro, accel, mag);
+	//UARTprintf("%8d   ,%8d,   %8d,   %4d,   %4d,   %4d\n",(int)(Eulers[0]*1e1), (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1), (int)(Gyros[0]*1e4), (int)(Gyros[1]*1e4), (int)(Gyros[2]*1e4));
+	//UARTprintf("$%d %d %d %d;", (int)(Eulers[0]*1e1), (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1) );
 	//UARTprintf("%4d %4d %4d\n", (int)(aileron_f*1e3), (int)(elevator_f*1e3), (int)(rudder_f*1e3));
 }
 
@@ -631,7 +655,7 @@ void ReadPulsedLight() {
 		alt_init_flag = true;
 	}
 	count_alt--;
-	UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
+	//UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
 //	UARTprintf("%4d\n",PulsedLightDistance);
 }
 
@@ -720,6 +744,7 @@ main(void)
 	}
 	delay(100);
 	setExtCrystalUse(&BNO, true);
+	setSensorOffsets(&BNO);
 	setMode(&BNO, OPERATION_MODE_NDOF);
 
 	//**********************************************************
@@ -775,7 +800,7 @@ main(void)
 	SetOutputLimits(&AnglePitch, -ANGLE_RATE_RANGE, ANGLE_RATE_RANGE);
 	SetOutputLimits(&AngleYaw, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
 
-	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 1.0, DIRECT);
+	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 1.0, DIRECT);  // d is 1.0
 	SetMode(&AltHold, MANUAL);
 	SetOutputLimits(&AltHold, -45.0, 45.0);
 
