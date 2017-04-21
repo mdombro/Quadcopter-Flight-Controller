@@ -96,9 +96,9 @@ void ReadPulsedLight();
 
 #define PID_UPDATE_FREQUENCY 50
 
-#define AILERON_NULL_SIZE 4
-#define ELEVATOR_NULL_SIZE 4
-#define RUDDER_NULL_SIZE 20 //15
+#define AILERON_NULL_SIZE 2
+#define ELEVATOR_NULL_SIZE 2
+#define RUDDER_NULL_SIZE 10 //15
 
 #define LPF_BETA 0.85
 
@@ -446,9 +446,9 @@ void PIDUpdate() {
 
 	//Int to float conversion of receiver inputs
 	//IntMasterDisable();
-	aileron_f = Map_f((float)aileron, AILERON_MIN, AILERON_MAX, ANGLE_RANGE, -ANGLE_RANGE);
-	elevator_f = Map_f((float)elevator, ELEVATOR_MIN, ELEVATOR_MAX, -ANGLE_RANGE, ANGLE_RANGE);
-	rudder_f = Map_f((float)rudder, RUDDER_MIN, RUDDER_MAX, ANGLE_RUDDER_RATE_RANGE, -ANGLE_RUDDER_RATE_RANGE);
+	aileron_f = Map_f((float)aileron, AILERON_MIN, AILERON_MAX, -ANGLE_RANGE, ANGLE_RANGE);
+	elevator_f = Map_f((float)elevator, ELEVATOR_MIN, ELEVATOR_MAX, ANGLE_RANGE, -ANGLE_RANGE);
+	rudder_f = Map_f((float)rudder, RUDDER_MIN, RUDDER_MAX, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
 	//IntMasterEnable();
 
 	//Throttle dependent on ALTHOLD flag & alt_start_flag. Determines which range the throttle should be mapped to
@@ -543,7 +543,7 @@ void PIDUpdate() {
 		Compute(&AngleRoll);
 		Compute(&AnglePitch);
 //		Compute(&AngleYaw);
-		if ((rudder_f < RUDDER_NULL_SIZE && rudder_f > -RUDDER_NULL_SIZE)) {
+		if ((rudder_f < RUDDER_NULL_SIZE && rudder_f > -RUDDER_NULL_SIZE) || throttle < 1050) {
 			rudderRate = 0;
 		}
 		else {
@@ -553,14 +553,22 @@ void PIDUpdate() {
 		Compute(&RateRoll);
 		Compute(&RatePitch);
 		Compute(&RateYaw);
+
+// OLD FRAME
 	//	PWM1 - Front Left
 	//	PWM2 - Back left
 	//	PWM3 - Front right
 	//	PWM4 - Back right
-		writePWM1(Constrain(throttle_final - RateRollOutput - RatePitchOutput + RateYawOutput, 15, 100));  // Front left
-		writePWM2(Constrain(throttle_final - RateRollOutput + RatePitchOutput - RateYawOutput, 15, 100));
-		writePWM3(Constrain(throttle_final + RateRollOutput - RatePitchOutput - RateYawOutput, 15, 100));
-		writePWM4(Constrain(throttle_final + RateRollOutput + RatePitchOutput + RateYawOutput, 15, 100));
+// NEW FRAME
+	//  PWM4 - Front Left
+	//  PWM1 - Back Left
+	//  PWM3 - Front Right
+	//  PWM2 - Back Right
+
+		writePWM4(Constrain(throttle_final + RateRollOutput + RatePitchOutput + RateYawOutput, 17, 100));  // Front left
+		writePWM1(Constrain(throttle_final + RateRollOutput - RatePitchOutput - RateYawOutput, 17, 100));
+		writePWM3(Constrain(throttle_final - RateRollOutput + RatePitchOutput - RateYawOutput, 17, 100));
+		writePWM2(Constrain(throttle_final - RateRollOutput - RatePitchOutput + RateYawOutput, 17, 100));
 	}
 	else {
 		writePWM1(0);  // Front left
@@ -590,6 +598,45 @@ void IMUupdate() {
 	getGyros(&BNO, Gyros);
 	getEulers(&BNO, Eulers);
 
+//	if(Gyros[0] >= 0) {
+//		Gyros[0] = 1;
+//	}
+//	else {
+//		Gyros[0] = -1;
+//	}
+//	if(Gyros[1] >= 0) {
+//		Gyros[1] = 1;
+//	}
+//	else {
+//		Gyros[1] = -1;
+//	}
+//	if(Gyros[2] >= 0) {
+//		Gyros[2] = 1;
+//	}
+//	else {
+//		Gyros[2] = -1;
+//	}
+//
+//	if(Eulers[0] >= 0) {
+//		Eulers[0] = 1;
+//	}
+//	else {
+//		Eulers[0] = -1;
+//	}
+//	if(Eulers[1] >= 0) {
+//		Eulers[1] = 1;
+//	}
+//	else {
+//		Eulers[1] = -1;
+//	}
+//	if(Eulers[2] >=0) {
+//		Eulers[2] = 1;
+//	}
+//	else {
+//		Eulers[2] = -1;
+//	}
+
+
 
 //*****************************************************************************
 //
@@ -614,25 +661,33 @@ void IMUupdate() {
 //
 //*****************************************************************************
 	Gyros[1] = -Gyros[1];
+	Gyros[2] = -Gyros[2];
+	//Eulers[2] = -Eulers[2];
 //*****************************************************************************
 //
 // THE ABOVE LINE IS SACRED...IT RUNS THE UNIVERSE
 //
 //*****************************************************************************
 
-	//	Gyros[0] -= 0.0097;
+	//YAW
+	//UARTprintf("%d %d\n",(int)(Eulers[0]), (int)(Gyros[2]));
+	//PITCH
+	//UARTprintf("%d %d\n",(int)(Eulers[1]), (int)(Gyros[1]));
+	//ROLL
+	//UARTprintf("%d %d\n",(int)(Eulers[2]), (int)(Gyros[0]));
+//	Gyros[0] -= 0.0097;
 //	Gyros[1] -= -0.0084;
 //	Gyros[2] -= 0.0099;
 
 //	Eulers[1] -= -0.9375;
 //	Eulers[2] -= 0.6875;
 	IntPriorityMaskSet(0);
-	uint8_t sys, gyro, accel, mag;
-	getCalibration(&sys, &gyro, &accel, &mag);
+	//uint8_t sys, gyro, accel, mag;
+	//getCalibration(&sys, &gyro, &accel, &mag);
 	//UARTprintf("$%d %d;", (int)throttle_final, (int)throttle_PID);
 	//UARTprintf("%d  %d  %d  %d\n", sys, gyro, accel, mag);
 	//UARTprintf("%8d   ,%8d,   %8d,   %4d,   %4d,   %4d\n",(int)(Eulers[0]*1e1), (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1), (int)(Gyros[0]*1e4), (int)(Gyros[1]*1e4), (int)(Gyros[2]*1e4));
-	//UARTprintf("$%d %d %d %d;", (int)(Eulers[0]*1e1), (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1) );
+	//UARTprintf("%4d  %4d  %4d\n", (int)(Eulers[0]*1e1), (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1) );
 	//UARTprintf("%4d %4d %4d\n", (int)(aileron_f*1e3), (int)(elevator_f*1e3), (int)(rudder_f*1e3));
 }
 
@@ -655,7 +710,7 @@ void ReadPulsedLight() {
 		alt_init_flag = true;
 	}
 	count_alt--;
-	UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
+	//UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
 //	UARTprintf("%4d\n",PulsedLightDistance);
 }
 
@@ -780,9 +835,9 @@ main(void)
     //aileronRate
     //elevatorRate
     //rudderRate
-    PID_Make(&RateRoll, &Gyros[0], &RateRollOutput, &aileronRate, 0.075, 0.001, 0.045, DIRECT);
-    PID_Make(&RatePitch, &Gyros[1], &RatePitchOutput, &elevatorRate, 0.075, 0.001, 0.045, DIRECT);
-    PID_Make(&RateYaw, &Gyros[2], &RateYawOutput, &rudderRate, 0.3, 0.0, 0.0, DIRECT);
+    PID_Make(&RateRoll, &Gyros[0], &RateRollOutput, &aileronRate, 0.05, 0.001, 0.01, DIRECT);  // P .075 I 0.001
+    PID_Make(&RatePitch, &Gyros[1], &RatePitchOutput, &elevatorRate, 0.05, 0.001, 0.01, DIRECT);  // P 0.075 I 0.001
+    PID_Make(&RateYaw, &Gyros[2], &RateYawOutput, &rudderRate, 0.2, 0.0, 0.0, DIRECT);   // 0.3
     SetMode(&RateRoll, AUTOMATIC);
     SetMode(&RatePitch, AUTOMATIC);
     SetMode(&RateYaw, AUTOMATIC);
@@ -790,8 +845,8 @@ main(void)
     SetOutputLimits(&RatePitch, -50, 50);
     SetOutputLimits(&RateYaw, -40, 40);
 
-    PID_Make(&AngleRoll, &Eulers[2], &aileronRate, &aileron_f, 4.5, 0.05, 0, DIRECT);
-    PID_Make(&AnglePitch, &Eulers[1], &elevatorRate, &elevator_f, 4.5, 0.05, 0, DIRECT);
+    PID_Make(&AngleRoll, &Eulers[2], &aileronRate, &aileron_f, 3.5, 0, 0, DIRECT);   // P 4.5 I 0.05
+    PID_Make(&AnglePitch, &Eulers[1], &elevatorRate, &elevator_f, 3.5, 0, 0, DIRECT);  // P 4.5 I 0.05
     PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.2, 0, 0.3, DIRECT);
     SetMode(&AngleRoll, AUTOMATIC);
 	SetMode(&AnglePitch, AUTOMATIC);

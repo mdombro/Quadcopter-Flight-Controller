@@ -735,7 +735,7 @@ void ReadPulsedLight() {
 	}
 	count_alt--;
 	//UARTprintf("%4d  %4d\n", (int)(altitude), PulsedLightDistance);
-	//UARTprintf("%4d\n",PulsedLightDistance);
+	UARTprintf("%4d\n",PulsedLightDistance);
 }
 
 //*****************************************************************************

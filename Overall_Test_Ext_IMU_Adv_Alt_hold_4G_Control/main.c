@@ -108,7 +108,7 @@ void PressuretoAlt(int32_t pressure);
 #define ELEVATOR_NULL_SIZE 4
 #define RUDDER_NULL_SIZE 20 //15
 
-#define LPF_BETA 0.8
+#define LPF_BETA 0.85
 #define LPF_BETA_BAR 1.0
 #define OFF_LPF_BETA 0.05
 
@@ -220,6 +220,8 @@ bool GLOBAL_ARMED;
 float GLOBAL_YAW, GLOBAL_THROTTLE, GLOBAL_ROLL, GLOBAL_PITCH;
 uint16_t Pi_yaw, Pi_throttle, Pi_roll, Pi_pitch;
 uint8_t state;
+uint8_t stallCount;
+uint16_t prePi_yaw, prePi_throttle, prePr_roll, prePi_pitch;
 //char* bitties;
 
 //*****************************************************************************
@@ -278,6 +280,14 @@ void PiUARTInt() {
 			Pi_throttle = (bitties[4] << 8) | bitties[9];
 			Pi_roll = (bitties[6] << 8) | bitties[3];
 			Pi_pitch = (bitties[8] << 8) | bitties[5];
+			if((prePi_yaw == Pi_yaw) && (prePi_throttle == Pi_throttle) && (prePi_roll == Pi_roll) && (prePi_pitch == Pi_pitch)) {
+				if(stallCount < 30) {
+					stallCount++;
+				}
+				else if(stallCount >= 30) {
+					//DO THE ALT HOLD THINGIE TILL A SIGNAL IS RECEIVED USE A FLAAAG
+				}
+			}
 
 		}
 	}
@@ -430,7 +440,7 @@ void RxCapture() {
 			Switch_on = 0;
 		}
 	}
-	//UARTprintf("%4d %4d\n", (int)throttle, EMERGENCY);
+	//UARTprintf("%10d %10d\n", throttle, rudder);
 	//UARTprintf("%4d\n",EMERGENCY);
 	//GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_5, 0);
 	IntPriorityMaskSet(0);
@@ -470,7 +480,7 @@ void initReceiver() {
 	IntEnable(INT_GPIOE);
 	IntMasterEnable();
 
-	SWITCH	 = false;
+	SWITCH	 = true;
 }
 
 //*****************************************************************************
@@ -520,7 +530,7 @@ ConfigureUART(void)
     //
     // Initialize the UART for console I/O.
     //
-    UARTStdioConfig(0, 9600, 16000000);
+    UARTStdioConfig(0, 115200, 16000000);
 }
 
 //*****************************************************************************
@@ -530,7 +540,7 @@ ConfigureUART(void)
 //*****************************************************************************
 void PIDUpdate() {
 	TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
-
+	//UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
 	if (Switch > 1500) {
 		GLOBAL_SOURCE_STATE = TX_CONTROL;
 	}
@@ -652,6 +662,9 @@ void PIDUpdate() {
 		writePWM3(0);
 		writePWM4(0);
 	}
+	//UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
+	UARTprintf("$%d %d %d %d;", (int)throttle_PID, (int)throttle_final, (int)(LPaltitude), (int)AltHoldTarget);
+	//UARTprintf("$%d;", (int)LPaltitude);
 }
 
 float Abs(float in) {
@@ -670,7 +683,7 @@ float Abs(float in) {
 //*****************************************************************************
 void IMUupdate() {
 	TimerIntClear(TIMER2_BASE, TIMER_TIMA_TIMEOUT);
-	IntPriorityMaskSet(0b01100000);
+	IntPriorityMaskSet(0b01000000);
 	if(initYawCount > 0) {
 		initYawCount--;
 		yawTarget = Eulers[0];
@@ -724,8 +737,7 @@ void ReadPulsedLight() {
 		alt_init_flag = true;
 	}
 	count_alt--;
-	UARTprintf("Fuck You\n");
-	UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
+
 	//UARTprintf("%4d\n",PulsedLightDistance);
 }
 
@@ -750,7 +762,7 @@ void BMP180ReadISR(void) {
 	PressuretoAlt(BmpSensHub.pressure);
 	LPaltitudeBaro = LPaltitudeBaro-(LPF_BETA_BAR*(LPaltitudeBaro-altitudeBaro));
 
-	CompFilter(LPaltitude,LPaltitudeBaro);
+	//CompFilter(LPaltitude,LPaltitudeBaro);
 
 	// initiate another sample to read next time around
 	BMP180GetRawTempStart();
@@ -848,7 +860,7 @@ main(void)
 
 	GLOBAL_ARMED = false;
 
-	FPUEnable();
+	//FPUEnable();
 	//bitties = malloc( sizeof(char) * 256 );
 
 
@@ -906,7 +918,7 @@ main(void)
 	uint32_t ui32Period2 = SysCtlClockGet() / 100;
 	TimerLoadSet(TIMER2_BASE, TIMER_A, ui32Period2 - 1);
 
-	IntPrioritySet(INT_TIMER2A, 0b01000000);
+	IntPrioritySet(INT_TIMER2A, 0b00100000);
 	IntEnable(INT_TIMER2A);
 	TimerIntEnable(TIMER2_BASE, TIMER_TIMA_TIMEOUT);
 	IntMasterEnable();
@@ -951,7 +963,7 @@ main(void)
 
 	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 1.0, DIRECT);
 	SetMode(&AltHold, MANUAL);
-	SetOutputLimits(&AltHold, -20.0, 20.0);
+	SetOutputLimits(&AltHold, -45.0, 45.0);
 
 	SysCtlDelay(6000000); //80000000   800000
 
@@ -1090,12 +1102,8 @@ main(void)
 	//TimerLoadSet(TIMER4_BASE, TIMER_A, );
 	TimerEnable(TIMER4_BASE, TIMER_A);
 
-//	IntPrioritySet(INT_TIMER3A, 0b11100000);
-//	IntEnable(INT_TIMER3A);
-//	TimerIntEnable(TIMER3_BASE, TIMER_TIMA_TIMEOUT);
-//	IntMasterEnable();
-
     IntMasterEnable();
+
 
     uint32_t count = 0;
     while(1)
@@ -1103,27 +1111,22 @@ main(void)
     	// No throttle and rudder right - arming sequence
 
     	if (throttle < THROTTLE_MIN + 110 && rudder > RUDDER_MAX - 100 && !GLOBAL_ARMED) {
-    		//TimerLoadSet(TIMER4_BASE, TIMER_A, 200000);
-    		//TimerEnable(TIMER4_BASE, TIMER_A);
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
     		while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 40000000) {
     			if (throttle < THROTTLE_MIN + 110 && rudder > RUDDER_MAX - 100) ARM_state_poll = true;
     			else {ARM_state_poll = false; break;}
     		}
     		if (ARM_state_poll) GLOBAL_ARMED = true;
-    		//TimerDisable(TIMER4_BASE, TIMER_A);
     	}
     	// No throttle and rudder left - disarming sequence
-    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && GLOBAL_ARMED && LPaltitude <= altitudeInit+100) {
-    		//TimerLoadSet(TIMER4_BASE, TIMER_A, 200000);
-			//TimerEnable(TIMER4_BASE, TIMER_A);
+    	//else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && GLOBAL_ARMED && LPaltitude <= altitudeInit+100) {
+		else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && GLOBAL_ARMED) {
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
 			while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 10000000) {
 				if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100) ARM_state_poll = true;
 				else {ARM_state_poll = false; break;}
 			}
 			if (ARM_state_poll) GLOBAL_ARMED = false;
-			//TimerDisable(TIMER4_BASE, TIMER_A);
     	}
 
 //    	count++;
