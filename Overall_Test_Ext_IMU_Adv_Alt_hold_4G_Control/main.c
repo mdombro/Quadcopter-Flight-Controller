@@ -221,7 +221,8 @@ float GLOBAL_YAW, GLOBAL_THROTTLE, GLOBAL_ROLL, GLOBAL_PITCH;
 uint16_t Pi_yaw, Pi_throttle, Pi_roll, Pi_pitch;
 uint8_t state;
 uint8_t stallCount;
-uint16_t prePi_yaw, prePi_throttle, prePr_roll, prePi_pitch;
+uint16_t prePi_yaw, prePi_throttle, prePi_roll, prePi_pitch;
+bool HOSED_UP;
 //char* bitties;
 
 //*****************************************************************************
@@ -282,23 +283,29 @@ void PiUARTInt() {
 			Pi_roll = (bitties[6] << 8) | bitties[7];
 			Pi_pitch = (bitties[8] << 8) | bitties[9];
 
-			//if(FLAG && some of the results are different) {
+			if(((Pi_yaw != prePi_yaw) || (Pi_throttle != prePi_throttle) || (Pi_roll != prePi_roll) || (Pi_pitch != prePi_pitch))) {
+				stallCount = 0;
+			}
+			if(HOSED_UP && ((Pi_yaw != prePi_yaw) || (Pi_throttle != prePi_throttle) || (Pi_roll != prePi_roll) || (Pi_pitch != prePi_pitch))) {
 				//TURN OFF ALTHOLD
 				//Switch FLAG
-				//FLAG = false;
-			//}
-//			if((prePi_yaw == Pi_yaw) && (prePi_throttle == Pi_throttle) && (prePi_roll == Pi_roll) && (prePi_pitch == Pi_pitch)) {
-//				if(stallCount < 30) {
-//					stallCount++;
-//				}
-//				else if(stallCount >= 30 && !FLAG) {
+				HOSED_UP = false;
+				stallCount = 0;
+			}
+			if((prePi_yaw == Pi_yaw) && (prePi_throttle == Pi_throttle) && (prePi_roll == Pi_roll) && (prePi_pitch == Pi_pitch)) {
+				if(stallCount < 30) {
+					stallCount++;
+				}
+				else if(stallCount >= 30 && !HOSED_UP) {
 					//MAKE ROLL AND PITCH GO TO ZERO
-					//Pi_roll = 0;
-					//Pi_pitch = 0;
-					//FLAG = true;
-//					//DO THE ALT HOLD THINGIE TILL A SIGNAL IS RECEIVED USE A FLAAAG
-//				}
-//			}
+					HOSED_UP = true;
+				}
+			}
+
+			prePi_yaw = Pi_yaw;
+			prePi_throttle = Pi_throttle;
+			prePi_roll = Pi_roll;
+			prePi_pitch = Pi_pitch;
 
 		}
 	}
@@ -569,8 +576,15 @@ void PIDUpdate() {
 		else if (!ALTHOLD) {
 			GLOBAL_THROTTLE = Map_f( (float)(Pi_throttle), 0, 65535, 10.0, 90.0);
 		}
-		GLOBAL_ROLL = Map_f( (float)(Pi_roll), 0, 65535, -ANGLE_RANGE, ANGLE_RANGE);
-		GLOBAL_PITCH = Map_f( (float)(Pi_pitch), 0, 65535, ANGLE_RANGE, -ANGLE_RANGE);
+		if(HOSED_UP) {
+			GLOBAL_ROLL = 0;
+			GLOBAL_PITCH = 0;
+			GLOBAL_YAW = 0;
+		}
+		else {
+			GLOBAL_ROLL = Map_f( (float)(Pi_roll), 0, 65535, -ANGLE_RANGE, ANGLE_RANGE);
+			GLOBAL_PITCH = Map_f( (float)(Pi_pitch), 0, 65535, ANGLE_RANGE, -ANGLE_RANGE);
+		}
 	}
 	else if (GLOBAL_SOURCE_STATE == TX_CONTROL) {
 		GLOBAL_YAW = Map_f((float)rudder, RUDDER_MIN, RUDDER_MAX, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
@@ -652,7 +666,7 @@ void PIDUpdate() {
 		Compute(&AngleRoll);
 		Compute(&AnglePitch);
 //		Compute(&AngleYaw);
-		if ((GLOBAL_YAW < RUDDER_NULL_SIZE && GLOBAL_YAW > -RUDDER_NULL_SIZE) || (throttle < 1050 && GLOBAL_SOURCE_STATE == TX_CONTROL) ) {
+		if ((GLOBAL_YAW < RUDDER_NULL_SIZE && GLOBAL_YAW > -RUDDER_NULL_SIZE) || (throttle < 1050 && GLOBAL_SOURCE_STATE == TX_CONTROL)) {
 			rudderRate = 0;
 		}
 		else {
@@ -839,7 +853,6 @@ float Constrain(float input, float floor, float ceiling) {
 int
 main(void)
 {
-
 	//**********************************************************
 	//
 	// Initial Variable Assignment
@@ -878,6 +891,12 @@ main(void)
 
 	GLOBAL_ARMED = false;
 
+	HOSED_UP = false;
+
+	prePi_roll = 0;
+	prePi_pitch = 0;
+	prePi_yaw = 0;
+	prePi_throttle = 0;
 	//FPUEnable();
 	//bitties = malloc( sizeof(char) * 256 );
 
