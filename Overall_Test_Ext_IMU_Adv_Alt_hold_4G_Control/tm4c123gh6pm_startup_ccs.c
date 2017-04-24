@@ -286,6 +286,7 @@ FaultISR(void)
     //
     while(1)
     {
+    	UARTprintf("You suck\n");
     }
 }
 

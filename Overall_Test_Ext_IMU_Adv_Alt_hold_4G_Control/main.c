@@ -104,9 +104,9 @@ void PressuretoAlt(int32_t pressure);
 
 #define PID_UPDATE_FREQUENCY 50
 
-#define AILERON_NULL_SIZE 4
-#define ELEVATOR_NULL_SIZE 4
-#define RUDDER_NULL_SIZE 20 //15
+#define AILERON_NULL_SIZE 2
+#define ELEVATOR_NULL_SIZE 2
+#define RUDDER_NULL_SIZE 10 //15
 
 #define LPF_BETA 0.85
 #define LPF_BETA_BAR 1.0
@@ -248,7 +248,7 @@ void PiUARTInt() {
 	TimerIntClear(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
 	IntPriorityMaskSet(0b01000000);
 	UARTEchoSet(false);
-
+	//UARTprintf("Pi int callled\n");
 	int i = 1;
 	//uint8_t count;
 	char bitties[256] = {};
@@ -267,27 +267,38 @@ void PiUARTInt() {
 	if (i > 1) {
 		//UARTgets(RxBuffer, 11);
 		if (bitties[0] == 0xAA) {
+			//GLOBAL_SHUTDOWN = true;
 			state = bitties[1];
 			//if (!(state & 0b00000001)) GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
 			//else GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
-			if(state & 0b01000000) GLOBAL_ARMED = true;
-			else GLOBAL_ARMED = false;
-			if (state & 0b1000000) GLOBAL_SHUTDOWN = true;
+			if(state & 0b01000000 && GLOBAL_SOURCE_STATE != TX_CONTROL) GLOBAL_ARMED = true;
+			else if(GLOBAL_SOURCE_STATE != TX_CONTROL) GLOBAL_ARMED = false;
+			if (state & 0b10000000) GLOBAL_SHUTDOWN = true;
 			else GLOBAL_SHUTDOWN = false;
 
 			//if (GLOBAL_SOURCE_STATE == GAME_PAD_CONTROL) {
-			Pi_yaw = (bitties[2] << 8) | bitties[7];
-			Pi_throttle = (bitties[4] << 8) | bitties[9];
-			Pi_roll = (bitties[6] << 8) | bitties[3];
-			Pi_pitch = (bitties[8] << 8) | bitties[5];
-			if((prePi_yaw == Pi_yaw) && (prePi_throttle == Pi_throttle) && (prePi_roll == Pi_roll) && (prePi_pitch == Pi_pitch)) {
-				if(stallCount < 30) {
-					stallCount++;
-				}
-				else if(stallCount >= 30) {
-					//DO THE ALT HOLD THINGIE TILL A SIGNAL IS RECEIVED USE A FLAAAG
-				}
-			}
+			Pi_yaw = (bitties[2] << 8) | bitties[3];
+			Pi_throttle = (bitties[4] << 8) | bitties[5];
+			Pi_roll = (bitties[6] << 8) | bitties[7];
+			Pi_pitch = (bitties[8] << 8) | bitties[9];
+
+			//if(FLAG && some of the results are different) {
+				//TURN OFF ALTHOLD
+				//Switch FLAG
+				//FLAG = false;
+			//}
+//			if((prePi_yaw == Pi_yaw) && (prePi_throttle == Pi_throttle) && (prePi_roll == Pi_roll) && (prePi_pitch == Pi_pitch)) {
+//				if(stallCount < 30) {
+//					stallCount++;
+//				}
+//				else if(stallCount >= 30 && !FLAG) {
+					//MAKE ROLL AND PITCH GO TO ZERO
+					//Pi_roll = 0;
+					//Pi_pitch = 0;
+					//FLAG = true;
+//					//DO THE ALT HOLD THINGIE TILL A SIGNAL IS RECEIVED USE A FLAAAG
+//				}
+//			}
 
 		}
 	}
@@ -530,7 +541,7 @@ ConfigureUART(void)
     //
     // Initialize the UART for console I/O.
     //
-    UARTStdioConfig(0, 115200, 16000000);
+    UARTStdioConfig(0, 9600, 16000000);
 }
 
 //*****************************************************************************
@@ -543,13 +554,15 @@ void PIDUpdate() {
 	//UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
 	if (Switch > 1500) {
 		GLOBAL_SOURCE_STATE = TX_CONTROL;
+		//ALTHOLD = false;
 	}
 	else {
 		GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
+		//ALTHOLD = true;
 	}
 
 	if (GLOBAL_SOURCE_STATE == GAME_PAD_CONTROL) {
-		GLOBAL_YAW = Map_f( (float)(Pi_yaw), 0, 65535,  ANGLE_RUDDER_RATE_RANGE, -ANGLE_RUDDER_RATE_RANGE);
+		GLOBAL_YAW = Map_f( (float)(Pi_yaw), 0, 65535, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
 		if (ALTHOLD) {
 			GLOBAL_THROTTLE = Map_f( (float)(Pi_throttle), 0, 65535, -45.0 , 45.0);
 		}
@@ -557,13 +570,13 @@ void PIDUpdate() {
 			GLOBAL_THROTTLE = Map_f( (float)(Pi_throttle), 0, 65535, 10.0, 90.0);
 		}
 		GLOBAL_ROLL = Map_f( (float)(Pi_roll), 0, 65535, -ANGLE_RANGE, ANGLE_RANGE);
-		GLOBAL_PITCH = Map_f( (float)(Pi_pitch), 0, 65535, -ANGLE_RANGE, ANGLE_RANGE);
+		GLOBAL_PITCH = Map_f( (float)(Pi_pitch), 0, 65535, ANGLE_RANGE, -ANGLE_RANGE);
 	}
 	else if (GLOBAL_SOURCE_STATE == TX_CONTROL) {
-		GLOBAL_YAW = Map_f((float)rudder, RUDDER_MIN, RUDDER_MAX, ANGLE_RUDDER_RATE_RANGE, -ANGLE_RUDDER_RATE_RANGE);
-		GLOBAL_THROTTLE = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, 0.0, 90.0);
-		GLOBAL_ROLL = Map_f((float)aileron, AILERON_MIN, AILERON_MAX, ANGLE_RANGE, -ANGLE_RANGE);
-		GLOBAL_PITCH = Map_f((float)elevator, ELEVATOR_MIN, ELEVATOR_MAX, -ANGLE_RANGE, ANGLE_RANGE);
+		GLOBAL_YAW = Map_f((float)rudder, RUDDER_MIN, RUDDER_MAX, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
+		GLOBAL_THROTTLE = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, 10.0, 90.0);
+		GLOBAL_ROLL = Map_f((float)aileron, AILERON_MIN, AILERON_MAX, -ANGLE_RANGE, ANGLE_RANGE);
+		GLOBAL_PITCH = Map_f((float)elevator, ELEVATOR_MIN, ELEVATOR_MAX, ANGLE_RANGE, -ANGLE_RANGE);
 	}
 
 	//UARTprintf("%d %d %d %d\n", (int)GLOBAL_YAW, (int)GLOBAL_THROTTLE, (int)GLOBAL_ROLL, (int)GLOBAL_PITCH);
@@ -577,7 +590,6 @@ void PIDUpdate() {
 				rudderSamples[i] = GLOBAL_YAW;
 			}
 		}
-
 
 		int sum = 0;
 		for(i = 0; i < 5; i++) {
@@ -594,19 +606,22 @@ void PIDUpdate() {
 			GLOBAL_PITCH = 0;
 		}
 
-		if(ALTHOLD && ALT_prev == false) {
+		//Allows switching between the gamepad and the tx controller
+		if(ALT_prev == false && Switch < 1500) {
 			SetMode(&AltHold, AUTOMATIC);
+			ALTHOLD = true;
 			ALT_prev = true;
 		}
-		else if(!ALTHOLD) {
+		else if(Switch > 1500 && ALT_prev) {
 			SetMode(&AltHold, MANUAL);
+			ALTHOLD = false;
+			ALT_prev = false;
 			throttle_PID = 0;
 		}
 
 		if (ALTHOLD && ALT_prev == true) {
-
 			//THIS IS TESTING PURPOSE
-			GLOBAL_THROTTLE = Map_f((float)(throttle), THROTTLE_MIN, THROTTLE_MAX, -45.0 , 45.0);
+			//GLOBAL_THROTTLE = Map_f((float)(throttle), THROTTLE_MIN, THROTTLE_MAX, -45.0 , 45.0);
 			if (GLOBAL_THROTTLE > 10.0) {
 				AltHoldVelocity = GLOBAL_THROTTLE - 10.0;
 			}
@@ -637,8 +652,8 @@ void PIDUpdate() {
 		Compute(&AngleRoll);
 		Compute(&AnglePitch);
 //		Compute(&AngleYaw);
-		if ((GLOBAL_YAW < RUDDER_NULL_SIZE && GLOBAL_YAW > -RUDDER_NULL_SIZE)) {
-				rudderRate = 0;
+		if ((GLOBAL_YAW < RUDDER_NULL_SIZE && GLOBAL_YAW > -RUDDER_NULL_SIZE) || (throttle < 1050 && GLOBAL_SOURCE_STATE == TX_CONTROL) ) {
+			rudderRate = 0;
 		}
 		else {
 			rudderRate = GLOBAL_YAW;
@@ -647,14 +662,15 @@ void PIDUpdate() {
 		Compute(&RateRoll);
 		Compute(&RatePitch);
 		Compute(&RateYaw);
-	//	PWM1 - Front Left
-	//	PWM2 - Back left
-	//	PWM3 - Front right
-	//	PWM4 - Back right
-		writePWM1(Constrain(throttle_final - RateRollOutput - RatePitchOutput + RateYawOutput, 15, 100));  // Front left
-		writePWM2(Constrain(throttle_final - RateRollOutput + RatePitchOutput - RateYawOutput, 15, 100));
-		writePWM3(Constrain(throttle_final + RateRollOutput - RatePitchOutput - RateYawOutput, 15, 100));
-		writePWM4(Constrain(throttle_final + RateRollOutput + RatePitchOutput + RateYawOutput, 15, 100));
+// NEW FRAME
+		//  PWM4 - Front Left
+		//  PWM1 - Back Left
+		//  PWM3 - Front Right
+		//  PWM2 - Back Right
+		writePWM4(Constrain(throttle_final + RateRollOutput + RatePitchOutput + RateYawOutput, 17, 100));  // Front left
+		writePWM1(Constrain(throttle_final + RateRollOutput - RatePitchOutput - RateYawOutput, 17, 100));
+		writePWM3(Constrain(throttle_final - RateRollOutput + RatePitchOutput - RateYawOutput, 17, 100));
+		writePWM2(Constrain(throttle_final - RateRollOutput - RatePitchOutput + RateYawOutput, 17, 100));
 	}
 	else {
 		writePWM1(0);  // Front left
@@ -662,8 +678,9 @@ void PIDUpdate() {
 		writePWM3(0);
 		writePWM4(0);
 	}
+
 	//UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
-	UARTprintf("$%d %d %d %d;", (int)throttle_PID, (int)throttle_final, (int)(LPaltitude), (int)AltHoldTarget);
+	//UARTprintf("$%d %d %d %d;", (int)throttle_PID, (int)throttle_final, (int)(LPaltitude), (int)AltHoldTarget);
 	//UARTprintf("$%d;", (int)LPaltitude);
 }
 
@@ -697,6 +714,7 @@ void IMUupdate() {
 //
 //*****************************************************************************
 	Gyros[1] = -Gyros[1];
+	Gyros[2] = -Gyros[2];
 //*****************************************************************************
 //
 // THE ABOVE LINE IS SACRED...IT RUNS THE UNIVERSE
@@ -837,7 +855,7 @@ main(void)
 	throttle = 0;
 	throttle_f = 0.0;
 	rudder = 0;
-	ALTHOLD = true;
+	ALTHOLD = false;
 	alt_start_flag = false;
 	alt_start_1 = false;
 	LPaltitude = 0;
@@ -941,9 +959,9 @@ main(void)
     //aileronRate
     //elevatorRate
     //rudderRate
-    PID_Make(&RateRoll, &Gyros[0], &RateRollOutput, &aileronRate, 0.075, 0.001, 0.045, DIRECT);
-    PID_Make(&RatePitch, &Gyros[1], &RatePitchOutput, &elevatorRate, 0.075, 0.001, 0.045, DIRECT);
-    PID_Make(&RateYaw, &Gyros[2], &RateYawOutput, &rudderRate, 0.3, 0.0, 0.0, DIRECT);
+    PID_Make(&RateRoll, &Gyros[0], &RateRollOutput, &aileronRate, 0.05, 0.001, 0.01, DIRECT);
+    PID_Make(&RatePitch, &Gyros[1], &RatePitchOutput, &elevatorRate, 0.05, 0.001, 0.01, DIRECT);
+    PID_Make(&RateYaw, &Gyros[2], &RateYawOutput, &rudderRate, 0.18, 0.0, 0.0, DIRECT);
     SetMode(&RateRoll, AUTOMATIC);
     SetMode(&RatePitch, AUTOMATIC);
     SetMode(&RateYaw, AUTOMATIC);
@@ -951,8 +969,8 @@ main(void)
     SetOutputLimits(&RatePitch, -50, 50);
     SetOutputLimits(&RateYaw, -40, 40);
 
-    PID_Make(&AngleRoll, &Eulers[2], &aileronRate, &GLOBAL_ROLL, 4.5, 0.05, 0, DIRECT);
-    PID_Make(&AnglePitch, &Eulers[1], &elevatorRate, &GLOBAL_PITCH, 4.5, 0.05, 0, DIRECT);
+    PID_Make(&AngleRoll, &Eulers[2], &aileronRate, &GLOBAL_ROLL, 3.5, 0.0, 0, DIRECT);
+    PID_Make(&AnglePitch, &Eulers[1], &elevatorRate, &GLOBAL_PITCH, 3.5, 0.0, 0, DIRECT);
     PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.2, 0, 0.3, DIRECT);
     SetMode(&AngleRoll, AUTOMATIC);
 	SetMode(&AnglePitch, AUTOMATIC);
@@ -1078,19 +1096,19 @@ main(void)
 	// Pi UART Initialization
 	//
 	//**********************************************************
-//	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER5);
-//	TimerConfigure(TIMER5_BASE, TIMER_CFG_PERIODIC);
-//	uint32_t ui32Period5 = SysCtlClockGet() / 100;
-//	TimerLoadSet(TIMER5_BASE, TIMER_A, ui32Period5 - 1);
-//
-//	IntPrioritySet(INT_TIMER5A, 0b00100000);
-//	//IntRegister(INT_TIMER3A, UARTInt);
-//	TimerIntRegister(TIMER5_BASE, TIMER_A, PiUARTInt);
-//	IntEnable(INT_TIMER5A);
-//	TimerIntEnable(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
-//
-//	TimerEnable(TIMER5_BASE, TIMER_A);
-//	UARTEchoSet(false);
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER5);
+	TimerConfigure(TIMER5_BASE, TIMER_CFG_PERIODIC);
+	uint32_t ui32Period5 = SysCtlClockGet() / 100;
+	TimerLoadSet(TIMER5_BASE, TIMER_A, ui32Period5 - 1);
+
+	IntPrioritySet(INT_TIMER5A, 0b00100000);
+	//IntRegister(INT_TIMER3A, UARTInt);
+	TimerIntRegister(TIMER5_BASE, TIMER_A, PiUARTInt);
+	IntEnable(INT_TIMER5A);
+	TimerIntEnable(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
+
+	TimerEnable(TIMER5_BASE, TIMER_A);
+	UARTEchoSet(false);
 
 	//**********************************************************
 	//
@@ -1109,7 +1127,7 @@ main(void)
     while(1)
     {
     	// No throttle and rudder right - arming sequence
-
+    	//CURRENTLY GAMEPAD SUPERCEDES TX CONTROLLER MUST MAKE IT SO THAT TX CONTROLLER SUPERCEDES THE GAMEPAD
     	if (throttle < THROTTLE_MIN + 110 && rudder > RUDDER_MAX - 100 && !GLOBAL_ARMED) {
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
     		while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 40000000) {
