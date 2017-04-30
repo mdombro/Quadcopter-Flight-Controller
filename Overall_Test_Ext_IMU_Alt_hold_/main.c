@@ -460,7 +460,7 @@ void PIDUpdate() {
 		throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, -45.0, 45.0);
 	}
 	else {
-		throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, 0.0, 90.0);
+		throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, 10.0, 90.0);
 	}
 
 	//If the althold > 1500 then the althold switch is flipped and the trottle should change its mapping
@@ -706,11 +706,11 @@ void ReadPulsedLight() {
 	//theta = (M_PI/2.0) - theta;
 	altitude = sin(theta)*(float)PulsedLightDistance;
 	LPaltitude = LPaltitude-(LPF_BETA*(LPaltitude-altitude));
-	if (count_alt < 0) {
-		alt_init_flag = true;
-	}
-	count_alt--;
-	//UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
+//	if (count_alt < 0) {
+//		alt_init_flag = true;
+//	}
+//	count_alt--;
+//	UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
 //	UARTprintf("%4d\n",PulsedLightDistance);
 }
 
@@ -756,7 +756,7 @@ main(void)
 	throttleAverage = 0.0;
 	hover_error = 0;
 	p_hover = 0.01;
-	hover_offset = 54;
+	hover_offset = 60;
 	init_flag = false;
 	rudderSamples[0] = rudderSamples[1] = rudderSamples[2] = rudderSamples[3] = rudderSamples[4] = 0;
 
@@ -847,7 +847,7 @@ main(void)
 
     PID_Make(&AngleRoll, &Eulers[2], &aileronRate, &aileron_f, 3.5, 0, 0, DIRECT);   // P 4.5 I 0.05
     PID_Make(&AnglePitch, &Eulers[1], &elevatorRate, &elevator_f, 3.5, 0, 0, DIRECT);  // P 4.5 I 0.05
-    PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.2, 0, 0.3, DIRECT);
+    PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.17, 0, 0.27, DIRECT);
     SetMode(&AngleRoll, AUTOMATIC);
 	SetMode(&AnglePitch, AUTOMATIC);
 	SetMode(&AngleYaw, AUTOMATIC);
@@ -855,7 +855,7 @@ main(void)
 	SetOutputLimits(&AnglePitch, -ANGLE_RATE_RANGE, ANGLE_RATE_RANGE);
 	SetOutputLimits(&AngleYaw, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
 
-	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 1.0, DIRECT);  // d is 1.0
+	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 0.9, DIRECT);  // d is 1.0
 	SetMode(&AltHold, MANUAL);
 	SetOutputLimits(&AltHold, -45.0, 45.0);
 
@@ -900,12 +900,14 @@ main(void)
 	//**********************************************************
 	TimerEnable(TIMER3_BASE, TIMER_A);
 
-	count_alt = 20;
-	alt_init_flag = false;
-	while (!alt_init_flag) {
-		AltHoldTarget = LPaltitude;
-	}
-	altitudeInit = LPaltitude;
+//	count_alt = 20;
+//	alt_init_flag = false;
+//	while (!alt_init_flag) {
+//		AltHoldTarget = LPaltitude;
+//	}
+//	altitudeInit = LPaltitude;
+	AltHoldTarget = 0;
+
 
 	//**********************************************************
 	//

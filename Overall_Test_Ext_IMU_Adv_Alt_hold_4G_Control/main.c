@@ -498,7 +498,7 @@ void initReceiver() {
 	IntEnable(INT_GPIOE);
 	IntMasterEnable();
 
-	SWITCH	 = true;
+	SWITCH= true;
 }
 
 //*****************************************************************************
@@ -765,10 +765,10 @@ void ReadPulsedLight() {
 	//theta = (M_PI/2.0) - theta;
 	altitudeCal = sin(theta)*(float)PulsedLightDistance;
 	LPaltitude = LPaltitude-(LPF_BETA*(LPaltitude-altitudeCal));
-	if (count_alt < 0) {
-		alt_init_flag = true;
-	}
-	count_alt--;
+//	if (count_alt < 0) {
+//		alt_init_flag = true;
+//	}
+//	count_alt--;
 
 	//UARTprintf("%4d\n",PulsedLightDistance);
 }
@@ -868,7 +868,7 @@ main(void)
 	throttle = 0;
 	throttle_f = 0.0;
 	rudder = 0;
-	ALTHOLD = false;
+	ALTHOLD = true;
 	alt_start_flag = false;
 	alt_start_1 = false;
 	LPaltitude = 0;
@@ -879,7 +879,7 @@ main(void)
 	p_hover = 0.01;
 	hover_offset = 54;
 	rudderSamples[0] = rudderSamples[1] = rudderSamples[2] = rudderSamples[3] = rudderSamples[4] = 0;
-	ALT_prev = false;
+	ALT_prev = true;
 
 	GLOBAL_THROTTLE = 0;
 	GLOBAL_YAW = 0;
@@ -990,7 +990,7 @@ main(void)
 
     PID_Make(&AngleRoll, &Eulers[2], &aileronRate, &GLOBAL_ROLL, 3.5, 0.0, 0, DIRECT);
     PID_Make(&AnglePitch, &Eulers[1], &elevatorRate, &GLOBAL_PITCH, 3.5, 0.0, 0, DIRECT);
-    PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.2, 0, 0.3, DIRECT);
+    PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.17, 0, 0.27, DIRECT);
     SetMode(&AngleRoll, AUTOMATIC);
 	SetMode(&AnglePitch, AUTOMATIC);
 	SetMode(&AngleYaw, AUTOMATIC);
@@ -998,8 +998,8 @@ main(void)
 	SetOutputLimits(&AnglePitch, -ANGLE_RATE_RANGE, ANGLE_RATE_RANGE);
 	SetOutputLimits(&AngleYaw, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
 
-	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 1.0, DIRECT);
-	SetMode(&AltHold, MANUAL);
+	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 0.7, DIRECT);
+	SetMode(&AltHold, AUTOMATIC);
 	SetOutputLimits(&AltHold, -45.0, 45.0);
 
 	SysCtlDelay(6000000); //80000000   800000
@@ -1073,13 +1073,14 @@ main(void)
 	//**********************************************************
 	TimerEnable(TIMER3_BASE, TIMER_A);
 
-	count_alt = 20;
-	alt_init_flag = false;
+	//count_alt = 20;
+	//alt_init_flag = false;
 
-	while (!alt_init_flag) {
-		AltHoldTarget = LPaltitude;
-	}
-	altitudeInit = LPaltitude;
+	//while (!alt_init_flag) {
+		//AltHoldTarget = LPaltitude;
+	//}
+	//altitudeInit = LPaltitude;
+	AltHoldTarget = -10;
 
 	//**********************************************************
 	//
