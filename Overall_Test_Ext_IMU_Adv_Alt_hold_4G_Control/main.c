@@ -50,7 +50,11 @@
 #include "bmpLib.h"
 
 
-// Function prototypes
+//*****************************************************************************
+//
+// Function Prototypes
+//
+//*****************************************************************************
 float Map_f(float in, float inMin, float inMax, float outMin, float outMax);
 
 int32_t Map(int32_t in, int32_t inMin, int32_t inMax, int32_t outMin, int32_t outMax);
@@ -62,8 +66,6 @@ void RxCapture();
 void initReceiver();
 
 void IMUupdate();
-
-float Abs(float in);
 
 void ReadPulsedLight();
 
@@ -80,9 +82,13 @@ void PressuretoAlt(int32_t pressure);
 //	Defines Section
 //		- Clock period in us
 // 		- Receiver Defines - watch clock_period
+//		- Angle/Rate Ranges & throttle threshold
 // 	 	- PID update rate
 //		- Null zone size for RPY
+//		- Low Pass Filter Beta Values
+//		- Controller Type
 //******************************************************************************************
+
 // Converts timer clock ticks to us
 // 40 for 40Mhz
 #define CLOCK_PERIOD 1.0/40.0
@@ -97,6 +103,7 @@ void PressuretoAlt(int32_t pressure);
 #define RUDDER_MIN 1028.0
 #define EMERGENCY_MAX 1909
 #define EMERGENCY_MIN 1033
+
 #define ANGLE_RATE_RANGE 250.0
 #define ANGLE_RANGE 20.0
 #define ANGLE_RUDDER_RATE_RANGE 220.0
@@ -124,7 +131,6 @@ void PressuretoAlt(int32_t pressure);
 //*****************************************************************************
 tI2CMInstance g_sI2CInst;
 
-
 //*****************************************************************************
 //
 // Global instance structure for the IMU
@@ -147,10 +153,6 @@ float Gyros[3];
 //*****************************************************************************
 volatile int32_t aileron, elevator, throttle, rudder, Switch, aileron_start, elevator_start, throttle_start, rudder_start, switch_start;
 volatile uint8_t aile_on, ele_on, thro_on, rud_on, Switch_on;
-volatile bool SWITCH;
-volatile bool alt_start_flag;
-volatile bool alt_start_1;
-
 
 //*****************************************************************************
 //
@@ -168,16 +170,10 @@ PID AltHold;
 float RateRollOutput, RatePitchOutput, RateYawOutput;
 float aileron_f, elevator_f, rudder_f, throttle_f;
 float aileronRate, elevatorRate, rudderRate;
-float radians[3];
 float yawTarget;
 float initYawCount;
 float rudderSamples[5];
-float yawSample[10];
 float rudderAverage;
-float yawAverage;
-float throttleAverage;
-float hover_error;
-float p_hover;
 float AltHoldTarget;
 float prevAltHoldTarget;
 float AltHoldVelocity;
@@ -218,12 +214,13 @@ uint8_t GLOBAL_SOURCE_STATE;
 bool GLOBAL_SHUTDOWN;
 bool GLOBAL_ARMED;
 float GLOBAL_YAW, GLOBAL_THROTTLE, GLOBAL_ROLL, GLOBAL_PITCH;
-uint16_t Pi_yaw, Pi_throttle, Pi_roll, Pi_pitch;
 uint8_t state;
 uint8_t stallCount;
+uint16_t Pi_yaw, Pi_throttle, Pi_roll, Pi_pitch;
 uint16_t prePi_yaw, prePi_throttle, prePi_roll, prePi_pitch;
 bool HOSED_UP;
-//char* bitties;
+bool LAUNCH;
+bool init_launch_flag;
 
 //*****************************************************************************
 //
@@ -243,52 +240,70 @@ volatile float altitude;
 // Raspberry PI UART Interrupt
 //
 //*****************************************************************************
-
-//TIME OUT IF READINGS ARE CONSISTENT FOR X AMOUNT OF TIME -> SHOULD TRIGGER GPS LOCK TO NOT CAUSE CRASHES
+/*
+ * This function pulls information from the Raspberry Pi via an interrupt the
+ * interrupt checks if there are more than 22 bytes available in the UART RX
+ * buffer. It then takes the first 11 bytes and makes sure that the first byte
+ * is 0xAA. If so then the next bytes contain information regarding the orientation,
+ * arming, and throttle. If the same message is sent X amount of times then the
+ * interrupt will determine that the 4G transmission has halted and will set the
+ * orientations to zero till a deviation in the values occurs.
+ *
+ * PRIORITY MASK :: 2
+ */
 void PiUARTInt() {
 	TimerIntClear(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
 	IntPriorityMaskSet(0b01000000);
 	UARTEchoSet(false);
-	//UARTprintf("Pi int callled\n");
+
+	//
+	// Checking if Bytes Available in UART Rx
+	//
 	int i = 1;
-	//uint8_t count;
 	char bitties[256] = {};
 	char terminationPos = (char) UARTPeek((char)0x0a);
+
 	if (UARTRxBytesAvail() >= 22) {
+
 		char checker = 'n';
+
 		while(checker != (char) 0xaa) checker = UARTgetc();
 		bitties[0] = checker;
-		//while(UARTRxBytesAvail() > 0 ){
 		for (i = 1; i < 11; i++) {
-			//terminationPos = (char) UARTPeek('\r');
-			bitties[i] = UARTgetc();//(char) UARTgets(bitties, (uint32_t) 256);
+			bitties[i] = UARTgetc();
 		}
 	}
 
+	//
+	// If correct initial byte grab data from all 11 bytes
+	//
 	if (i > 1) {
-		//UARTgets(RxBuffer, 11);
 		if (bitties[0] == 0xAA) {
-			//GLOBAL_SHUTDOWN = true;
+
 			state = bitties[1];
-			//if (!(state & 0b00000001)) GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
-			//else GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
-			if(state & 0b01000000 && GLOBAL_SOURCE_STATE != TX_CONTROL) GLOBAL_ARMED = true;
+
+			if(state & 0b01000000 && GLOBAL_SOURCE_STATE != TX_CONTROL) {
+				GLOBAL_ARMED = true;
+//				if(!LAUNCH) {
+//					LAUNCH = true;
+//				}
+			}
 			else if(GLOBAL_SOURCE_STATE != TX_CONTROL) GLOBAL_ARMED = false;
 			if (state & 0b10000000) GLOBAL_SHUTDOWN = true;
 			else GLOBAL_SHUTDOWN = false;
 
-			//if (GLOBAL_SOURCE_STATE == GAME_PAD_CONTROL) {
 			Pi_yaw = (bitties[2] << 8) | bitties[3];
 			Pi_throttle = (bitties[4] << 8) | bitties[5];
 			Pi_roll = (bitties[6] << 8) | bitties[7];
 			Pi_pitch = (bitties[8] << 8) | bitties[9];
 
+			//
+			// Check the values to determine if 4G stalled
+			//
 			if(((Pi_yaw != prePi_yaw) || (Pi_throttle != prePi_throttle) || (Pi_roll != prePi_roll) || (Pi_pitch != prePi_pitch))) {
 				stallCount = 0;
 			}
 			if(HOSED_UP && ((Pi_yaw != prePi_yaw) || (Pi_throttle != prePi_throttle) || (Pi_roll != prePi_roll) || (Pi_pitch != prePi_pitch))) {
-				//TURN OFF ALTHOLD
-				//Switch FLAG
 				HOSED_UP = false;
 				stallCount = 0;
 			}
@@ -297,10 +312,11 @@ void PiUARTInt() {
 					stallCount++;
 				}
 				else if(stallCount >= 30 && !HOSED_UP) {
-					//MAKE ROLL AND PITCH GO TO ZERO
 					HOSED_UP = true;
 				}
 			}
+
+			//IF GREATER THAN +- 20 on the orientation forward previous orientation
 
 			prePi_yaw = Pi_yaw;
 			prePi_throttle = Pi_throttle;
@@ -317,20 +333,24 @@ void PiUARTInt() {
 // Receiver interrupt function to capture pulse widths
 //
 //*****************************************************************************
+/*
+ * Interrupt to handle receiver decoding
+ * Each if statement will start timer counting on the rising edge (with some checks)
+ * On falling edge for that pin timer is stopped and the value assessed
+ * 5 channels of which 4 are for orientation and throttle.
+ * Last channel is for switching controllers (TAKE OVER FOR EMERGENCY SITUATIONS)
+ *
+ * PRIORITY :: 0
+ * PRIORITY MASK :: 1
+ */
 void RxCapture() {
-	//UARTprintf("%3d %3d %3d %3d %3d\n", aileron, elevator, throttle, rudder, EMERGENCY);
-	//GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_5, 255);
-	// Interrupt to handle receiver decoding
-	// Each if statement will start timer counting on the rising edge (with some checks)
-	// On falling edge for that pin timer is stopped and the value asessed
-	// First channel is Switch stop - if its over a certain amount of time a global SYSTEM_OFF flag is set
-	// Other channels are proportional channels
-	// Will be scaled to whatever value is necessary for the application
 	TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 	IntPriorityMaskSet(0b00100000);
 	if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_2) == GPIO_PIN_2) {
 		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_2);  // Clear interrupt flag
+		//
 		// Aileron
+		//
 		aile_on = 1;
 		ele_on = 0;
 		thro_on = 0;
@@ -340,7 +360,9 @@ void RxCapture() {
 	}
 	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_3) == GPIO_PIN_3) {
 		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_3);  // Clear interrupt flag
-		// elevator
+		//
+		// Elevator
+		//
 		aile_on = 0;
 		ele_on = 1;
 		thro_on = 0;
@@ -350,7 +372,9 @@ void RxCapture() {
 	}
 	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_1) == GPIO_PIN_1) {
 		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
-		// throttle
+		//
+		// Throttle
+		//
 		aile_on = 0;
 		ele_on = 0;
 		thro_on = 1;
@@ -360,7 +384,9 @@ void RxCapture() {
 	}
 	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_4) == GPIO_PIN_4) {
 		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
-		// rudder
+		//
+		// Rudder
+		//
 		aile_on = 0;
 		ele_on = 0;
 		thro_on = 0;
@@ -370,7 +396,9 @@ void RxCapture() {
 	}
 	else if (GPIOPinRead(GPIO_PORTE_BASE, GPIO_PIN_0) == GPIO_PIN_0) {
 		GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
+		//
 		// Switch
+		//
 		aile_on = 0;
 		ele_on = 0;
 		thro_on = 0;
@@ -379,8 +407,10 @@ void RxCapture() {
 		switch_start = TimerValueGet(TIMER0_BASE, TIMER_A);
 	}
 	else {
-		//TimerDisable(TIMER0_BASE, TIMER_A);
 		if (aile_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b100)) {
+			//
+			// Aileron
+			//
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_2);  // Clear interrupt flag
 			aile_on = 0;
 			ele_on = 0;
@@ -388,9 +418,11 @@ void RxCapture() {
 			rud_on = 0;
 			Switch_on = 0;
 			aileron = (TimerValueGet(TIMER0_BASE, TIMER_A) - aileron_start)*CLOCK_PERIOD;
-			//aileron_f = Map_f((float)aileron, AILERON_MIN, AILERON_MAX, ANGLE_RANGE, -ANGLE_RANGE);
 		}
 		else if (ele_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b1000)) {
+			//
+			// Elevator
+			//
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_3);  // Clear interrupt flag
 			aile_on = 0;
 			ele_on = 0;
@@ -398,9 +430,11 @@ void RxCapture() {
 			rud_on = 0;
 			Switch_on = 0;
 			elevator = (TimerValueGet(TIMER0_BASE, TIMER_A) - elevator_start)*CLOCK_PERIOD;
-			//elevator_f = Map_f((float)elevator, ELEVATOR_MIN, ELEVATOR_MAX, -ANGLE_RANGE, ANGLE_RANGE);
 		}
 		else if (thro_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b10)) {
+			//
+			// Throttle
+			//
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_1);  // Clear interrupt flag
 			aile_on = 0;
 			ele_on = 0;
@@ -408,18 +442,11 @@ void RxCapture() {
 			rud_on = 0;
 			Switch_on = 0;
 			throttle = (TimerValueGet(TIMER0_BASE, TIMER_A) - throttle_start)*CLOCK_PERIOD;
-//			if(ALTHOLD && alt_start_flag) {
-//				throttle_f = 0;
-//				alt_start_flag = false;
-//			}
-//			else if(ALTHOLD && !alt_start_flag) {
-//				throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, -45.0, 45.0);
-//			}
-//			else {
-//				throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, 0.0, 90.0);
-//			}
 		}
 		else if (rud_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b10000)) {
+			//
+			// Rudder
+			//
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_4);  // Clear interrupt flag
 			aile_on = 0;
 			ele_on = 0;
@@ -427,9 +454,11 @@ void RxCapture() {
 			rud_on = 0;
 			Switch_on = 0;
 			rudder = (TimerValueGet(TIMER0_BASE, TIMER_A) - rudder_start)*CLOCK_PERIOD;
-			//rudder_f = Map_f((float)rudder, RUDDER_MIN, RUDDER_MAX, ANGLE_RUDDER_RATE_RANGE, -ANGLE_RUDDER_RATE_RANGE);
 		}
 		else if (Switch_on && (GPIOIntStatus(GPIO_PORTE_BASE, false) & 0b01)) {
+			//
+			// Switch
+			//
 			GPIOIntClear(GPIO_PORTE_BASE, GPIO_PIN_0);  // Clear interrupt flag
 			aile_on = 0;
 			ele_on = 0;
@@ -437,18 +466,6 @@ void RxCapture() {
 			rud_on = 0;
 			Switch_on = 0;
 			Switch = (TimerValueGet(TIMER0_BASE, TIMER_A) - switch_start)*CLOCK_PERIOD;
-//			if (althold > 1500) {
-//				ALTHOLD = true;
-//				if (!alt_start_1) {
-//					alt_start_1 = true;
-//					alt_start_flag = true;
-//				}
-//			}
-//			else {
-//				ALTHOLD = false;
-//				alt_start_1 = false;
-//			}
-			//althold = Map(althold, EMERGENCY_MIN, EMERGENCY_MAX, 0, 10);
 		}
 		else {
 			aile_on = 0;
@@ -458,9 +475,6 @@ void RxCapture() {
 			Switch_on = 0;
 		}
 	}
-	//UARTprintf("%10d %10d\n", throttle, rudder);
-	//UARTprintf("%4d\n",EMERGENCY);
-	//GPIOPinWrite(GPIO_PORTA_BASE, GPIO_PIN_5, 0);
 	IntPriorityMaskSet(0);
 }
 
@@ -469,8 +483,15 @@ void RxCapture() {
 // Configure the receiver read interrupt pins and the timer to capture pulse width
 //
 //*****************************************************************************
+/*
+ * Initializes the receiver GPIO pins of the Port E and A.
+ * Maps the RxCapture() Interrupt to the GPIO port.
+ * Sets up the Timer for the receiver
+ */
 void initReceiver() {
+	//
 	// GPIO Port A setup
+	//
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
 	SysCtlDelay(3);
 	GPIOPinTypeGPIOInput(GPIO_PORTE_BASE, GPIO_INT_PIN_2 | GPIO_INT_PIN_3 | GPIO_INT_PIN_4 | GPIO_INT_PIN_0 | GPIO_INT_PIN_1);
@@ -478,27 +499,26 @@ void initReceiver() {
 	SysCtlDelay(3);
 	GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, GPIO_PIN_5);
 
-	//ConfigureUART();
-
+	//
 	// Interrupt setup
+	//
 	GPIOIntDisable(GPIO_PORTE_BASE, GPIO_INT_PIN_2 | GPIO_INT_PIN_3 | GPIO_INT_PIN_4 | GPIO_INT_PIN_0 | GPIO_INT_PIN_1);
 	GPIOIntClear(GPIO_PORTE_BASE, GPIO_INT_PIN_2 | GPIO_INT_PIN_3 | GPIO_INT_PIN_4 | GPIO_INT_PIN_0 | GPIO_INT_PIN_1);
 	GPIOIntEnable(GPIO_PORTE_BASE, GPIO_INT_PIN_2 | GPIO_INT_PIN_3 | GPIO_INT_PIN_4 | GPIO_INT_PIN_0 | GPIO_INT_PIN_1);
 	GPIOIntTypeSet(GPIO_PORTE_BASE, GPIO_INT_PIN_2 | GPIO_INT_PIN_3 | GPIO_INT_PIN_4 | GPIO_INT_PIN_0 | GPIO_INT_PIN_1, GPIO_BOTH_EDGES);
 	GPIOIntRegister(GPIO_PORTE_BASE, RxCapture);
 
+	//
 	// Timer setup
+	//
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 	SysCtlDelay(3);
 	TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC_UP);
 	TimerEnable(TIMER0_BASE, TIMER_A);
-	//TimerDisable(TIMER0_BASE, TIMER_A);
 
 	IntPrioritySet(INT_GPIOE, 0);
 	IntEnable(INT_GPIOE);
 	IntMasterEnable();
-
-	SWITCH= true;
 }
 
 //*****************************************************************************
@@ -513,7 +533,6 @@ int32_t Map(int32_t in, int32_t inMin, int32_t inMax, int32_t outMin, int32_t ou
 float Map_f(float in, float inMin, float inMax, float outMin, float outMax) {
 	return ((in - inMin)*(outMax - outMin) / (inMax - inMin)) + outMin;
 }
-
 
 //*****************************************************************************
 //
@@ -556,26 +575,41 @@ ConfigureUART(void)
 // PID Computation and ESC Update
 //
 //*****************************************************************************
+/*
+ *
+ */
 void PIDUpdate() {
 	TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
-	//UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
+
+    //
+    // Check Controller State
+    //
 	if (Switch > 1500) {
 		GLOBAL_SOURCE_STATE = TX_CONTROL;
-		//ALTHOLD = false;
 	}
 	else {
 		GLOBAL_SOURCE_STATE = GAME_PAD_CONTROL;
-		//ALTHOLD = true;
 	}
 
+    //
+    // Forward PI values if gamepad controller or receiver values if tx controller
+    //
 	if (GLOBAL_SOURCE_STATE == GAME_PAD_CONTROL) {
 		GLOBAL_YAW = Map_f( (float)(Pi_yaw), 0, 65535, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
+
+		//
+		// Map throttle according to ALTHOLD
+		//
 		if (ALTHOLD) {
 			GLOBAL_THROTTLE = Map_f( (float)(Pi_throttle), 0, 65535, -45.0 , 45.0);
 		}
 		else if (!ALTHOLD) {
 			GLOBAL_THROTTLE = Map_f( (float)(Pi_throttle), 0, 65535, 10.0, 90.0);
 		}
+
+		//
+		// Set roll, pitch, and yaw to zero if 4G transmission is HOSED_UP
+		//
 		if(HOSED_UP) {
 			GLOBAL_ROLL = 0;
 			GLOBAL_PITCH = 0;
@@ -593,7 +627,9 @@ void PIDUpdate() {
 		GLOBAL_PITCH = Map_f((float)elevator, ELEVATOR_MIN, ELEVATOR_MAX, ANGLE_RANGE, -ANGLE_RANGE);
 	}
 
-	//UARTprintf("%d %d %d %d\n", (int)GLOBAL_YAW, (int)GLOBAL_THROTTLE, (int)GLOBAL_ROLL, (int)GLOBAL_PITCH);
+	//
+	// ARMED STATE adjustments of PIDs
+	//
 	if (GLOBAL_ARMED) {
 		int i;
 		for(i = 0; i < 5; i++) {
@@ -611,8 +647,9 @@ void PIDUpdate() {
 			}
 		rudderAverage = sum/5.0;
 
-
-		// Adding null zone for input channel roll, pitch, yaw
+		//
+		// Adding null zone for input channel roll, pitch
+		//
 		if (GLOBAL_ROLL < AILERON_NULL_SIZE && GLOBAL_ROLL > -AILERON_NULL_SIZE) {
 			GLOBAL_ROLL = 0;
 		}
@@ -620,7 +657,9 @@ void PIDUpdate() {
 			GLOBAL_PITCH = 0;
 		}
 
+		//
 		//Allows switching between the gamepad and the tx controller
+		//
 		if(ALT_prev == false && Switch < 1500) {
 			SetMode(&AltHold, AUTOMATIC);
 			ALTHOLD = true;
@@ -633,9 +672,10 @@ void PIDUpdate() {
 			throttle_PID = 0;
 		}
 
+		//
+		// Altitude Calculation for throttle adjustments
+		//
 		if (ALTHOLD && ALT_prev == true) {
-			//THIS IS TESTING PURPOSE
-			//GLOBAL_THROTTLE = Map_f((float)(throttle), THROTTLE_MIN, THROTTLE_MAX, -45.0 , 45.0);
 			if (GLOBAL_THROTTLE > 10.0) {
 				AltHoldVelocity = GLOBAL_THROTTLE - 10.0;
 			}
@@ -645,18 +685,20 @@ void PIDUpdate() {
 			else {
 				AltHoldVelocity = 0.0;
 			}
+
 			prevAltHoldTarget = AltHoldTarget;
 			AltHoldTarget = AltHoldVelocity/50.0 + AltHoldTarget;
 
+//			if(LAUNCH && init_launch_flag) {
+//				init_launch_flag = false;
+//				AltHoldTarget = 50;
+//			}
+
 			Compute(&AltHold);
-			//throttleAverage = throttleAverage-(OFF_LPF_BETA*(throttleAverage-throttle_PID));
+
 			throttle_PID = throttle_PID + hover_offset;
 			throttle_PID = Constrain(throttle_PID, 20.0, 90.0);
 			throttle_final = throttle_PID;
-//			if(AltHoldTarget == prevAltHoldTarget) {
-//				hover_error = throttleAverage;
-//				hover_offset = hover_offset + p_hover*hover_error;
-//			}
 		}
 		else {
 			AltHoldTarget = LPaltitude;
@@ -665,7 +707,10 @@ void PIDUpdate() {
 
 		Compute(&AngleRoll);
 		Compute(&AnglePitch);
-//		Compute(&AngleYaw);
+
+		//
+		// Adding null zone for input channel yaw
+		//
 		if ((GLOBAL_YAW < RUDDER_NULL_SIZE && GLOBAL_YAW > -RUDDER_NULL_SIZE) || (throttle < 1050 && GLOBAL_SOURCE_STATE == TX_CONTROL)) {
 			rudderRate = 0;
 		}
@@ -673,37 +718,24 @@ void PIDUpdate() {
 			rudderRate = GLOBAL_YAW;
 			yawTarget = Eulers[0];
 		}
+
 		Compute(&RateRoll);
 		Compute(&RatePitch);
 		Compute(&RateYaw);
-// NEW FRAME
-		//  PWM4 - Front Left
-		//  PWM1 - Back Left
-		//  PWM3 - Front Right
-		//  PWM2 - Back Right
-		writePWM4(Constrain(throttle_final + RateRollOutput + RatePitchOutput + RateYawOutput, 17, 100));  // Front left
-		writePWM1(Constrain(throttle_final + RateRollOutput - RatePitchOutput - RateYawOutput, 17, 100));
-		writePWM3(Constrain(throttle_final - RateRollOutput + RatePitchOutput - RateYawOutput, 17, 100));
-		writePWM2(Constrain(throttle_final - RateRollOutput - RatePitchOutput + RateYawOutput, 17, 100));
+
+		//
+		// Write the constrained values to the ESC
+		//
+		writePWM4(Constrain(throttle_final + RateRollOutput + RatePitchOutput + RateYawOutput, 17, 100));  // Front Left
+		writePWM1(Constrain(throttle_final + RateRollOutput - RatePitchOutput - RateYawOutput, 17, 100));  // Back Left
+		writePWM3(Constrain(throttle_final - RateRollOutput + RatePitchOutput - RateYawOutput, 17, 100));  // Front Right
+		writePWM2(Constrain(throttle_final - RateRollOutput - RatePitchOutput + RateYawOutput, 17, 100));  // Back Right
 	}
 	else {
 		writePWM1(0);  // Front left
 		writePWM2(0);
 		writePWM3(0);
 		writePWM4(0);
-	}
-
-	//UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
-	//UARTprintf("$%d %d %d %d;", (int)throttle_PID, (int)throttle_final, (int)(LPaltitude), (int)AltHoldTarget);
-	//UARTprintf("$%d;", (int)LPaltitude);
-}
-
-float Abs(float in) {
-	if (in < 0.0) {
-		return -1.0*in;
-	}
-	else {
-		return in;
 	}
 }
 
@@ -712,6 +744,12 @@ float Abs(float in) {
 // IMU Interrupt
 //
 //*****************************************************************************
+/*
+ * This interrupt pulls information from the BN055 which returns our orientation
+ * values in the form of Eulers & Gyros
+ *
+ * PRIORITY MASK :: 2
+ */
 void IMUupdate() {
 	TimerIntClear(TIMER2_BASE, TIMER_TIMA_TIMEOUT);
 	IntPriorityMaskSet(0b01000000);
@@ -735,14 +773,8 @@ void IMUupdate() {
 //
 //*****************************************************************************
 
-//	Gyros[0] -= 0.0097;
-//	Gyros[1] -= -0.0084;
-//	Gyros[2] -= 0.0099;
-//	Eulers[1] -= -0.9375;
-//	Eulers[2] -= 0.6875;
+	UARTprintf("$%d;", Eulers[0]);
 	IntPriorityMaskSet(0);
-	//UARTprintf("%4d,%4d,%4d,%4d,%4d\n", (int)(Eulers[1]*1e7), (int)(Eulers[2]*1e7), (int)(Gyros[0]*1e7), (int)(Gyros[1]*1e7), (int)(Gyros[2]*1e7));
-	//UARTprintf("%4d %4d %4d\n", (int)(aileron_f*1e3), (int)(elevator_f*1e3), (int)(GLOBAL_ROLL*1e3));
 }
 
 //*****************************************************************************
@@ -750,6 +782,9 @@ void IMUupdate() {
 // LIDAR Interrupt
 //
 //*****************************************************************************
+/*
+ *
+ */
 void ReadPulsedLight() {
 	TimerIntClear(TIMER3_BASE, TIMER_TIMA_TIMEOUT);
 	PulsedLightDistance = ReadDistance();
@@ -770,7 +805,6 @@ void ReadPulsedLight() {
 //	}
 //	count_alt--;
 
-	//UARTprintf("%4d\n",PulsedLightDistance);
 }
 
 
@@ -780,25 +814,33 @@ void ReadPulsedLight() {
 //
 //*****************************************************************************
 void BMP180ReadISR(void) {
+	//
 	// Clear the timer interrupt
+	//
 	TimerIntClear(TIMER1_BASE, TIMER_TIMB_TIMEOUT);
+
+	//
 	// Get & print temperature
+	//
 	BMP180GetTemp(&BmpSensHub, &BmpSensHubCals);
 	//FloatToPrint(BmpSensHub.temp, printValue);
 	//UARTprintf("%d.%03d, ",printValue[0], printValue[1]);
 
-	// Get & print pressure
+	//
+	// Get pressure and convert it to an altitude
+	//
 	BMP180GetPressure(&BmpSensHub, &BmpSensHubCals);
-	//pressure = BmpSensHub.pressure;
-	//UARTprintf("%d\n", BmpSensHub.pressure);
 	PressuretoAlt(BmpSensHub.pressure);
 	LPaltitudeBaro = LPaltitudeBaro-(LPF_BETA_BAR*(LPaltitudeBaro-altitudeBaro));
 
 	//CompFilter(LPaltitude,LPaltitudeBaro);
 
-	// initiate another sample to read next time around
+	//
+	// Initiate another sample to read next time around
+	//
 	BMP180GetRawTempStart();
 	BMP180GetRawPressureStart(BmpSensHub.oversamplingSetting);
+
 	if (count_altBar < 0) {
 		alt_initBar_flag = true;
 	}
@@ -811,7 +853,6 @@ void BMP180ReadISR(void) {
 //
 //*****************************************************************************
 void PressuretoAlt(int32_t pressure) {
-	//GOTTA FIGURE OUT THE UNITS OF PRESSURE TO DETERMINE IF A GAIN FACOTR IS NEEDED
 	altitudeBaro = (1-pow(((float)pressure/1013.25),0.190284))*145366.46;
 }
 
@@ -868,17 +909,16 @@ main(void)
 	throttle = 0;
 	throttle_f = 0.0;
 	rudder = 0;
-	ALTHOLD = true;
-	alt_start_flag = false;
-	alt_start_1 = false;
+
 	LPaltitude = 0;
 	LPaltitudeBaro = 0;
+
 	throttle_final = 0;
-	throttleAverage = 0.0;
-	hover_error = 0;
-	p_hover = 0.01;
 	hover_offset = 54;
+
 	rudderSamples[0] = rudderSamples[1] = rudderSamples[2] = rudderSamples[3] = rudderSamples[4] = 0;
+
+	ALTHOLD = true;
 	ALT_prev = true;
 
 	GLOBAL_THROTTLE = 0;
@@ -893,13 +933,13 @@ main(void)
 
 	HOSED_UP = false;
 
+	LAUNCH = false;
+	init_launch_flag = true;
+
 	prePi_roll = 0;
 	prePi_pitch = 0;
 	prePi_yaw = 0;
 	prePi_throttle = 0;
-	//FPUEnable();
-	//bitties = malloc( sizeof(char) * 256 );
-
 
     //**********************************************************
 	//
@@ -975,9 +1015,6 @@ main(void)
 	// PID Configuration
 	//
 	//**********************************************************
-    //aileronRate
-    //elevatorRate
-    //rudderRate
     PID_Make(&RateRoll, &Gyros[0], &RateRollOutput, &aileronRate, 0.05, 0.001, 0.01, DIRECT);
     PID_Make(&RatePitch, &Gyros[1], &RatePitchOutput, &elevatorRate, 0.05, 0.001, 0.01, DIRECT);
     PID_Make(&RateYaw, &Gyros[2], &RateYawOutput, &rudderRate, 0.18, 0.0, 0.0, DIRECT);
@@ -1017,8 +1054,6 @@ main(void)
 	// BMP180 Pressure Initialization
 	//
 	//**********************************************************
-
-	//Dunno if the FPUEnable() and FPULazyStackingEnable() are necessary...
 //	FPULazyStackingEnable();
 //	BMP180Initialize(&BmpSensHub,3);
 //	BMP180GetCalVals(&BmpSensHub, &BmpSensHubCals);
@@ -1055,7 +1090,9 @@ main(void)
 //	TimerIntEnable(TIMER1_BASE, TIMER_TIMB_TIMEOUT);
 //	IntMasterEnable();
 //
+	//
 //	// Enable I2C
+	//
 //	ConfigureI2C1(true);
 
 	//**********************************************************
@@ -1122,7 +1159,6 @@ main(void)
 	TimerLoadSet(TIMER5_BASE, TIMER_A, ui32Period5 - 1);
 
 	IntPrioritySet(INT_TIMER5A, 0b00100000);
-	//IntRegister(INT_TIMER3A, UARTInt);
 	TimerIntRegister(TIMER5_BASE, TIMER_A, PiUARTInt);
 	IntEnable(INT_TIMER5A);
 	TimerIntEnable(TIMER5_BASE, TIMER_TIMA_TIMEOUT);
@@ -1137,17 +1173,18 @@ main(void)
 	//**********************************************************
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
 	TimerConfigure(TIMER4_BASE, TIMER_CFG_PERIODIC);
-	//TimerLoadSet(TIMER4_BASE, TIMER_A, );
 	TimerEnable(TIMER4_BASE, TIMER_A);
 
     IntMasterEnable();
 
-
-    uint32_t count = 0;
     while(1)
     {
+    	//**********************************************************
+    	//
+    	// Arming/Disarming Sequences
+    	//
+    	//**********************************************************
     	// No throttle and rudder right - arming sequence
-    	//CURRENTLY GAMEPAD SUPERCEDES TX CONTROLLER MUST MAKE IT SO THAT TX CONTROLLER SUPERCEDES THE GAMEPAD
     	if (throttle < THROTTLE_MIN + 110 && rudder > RUDDER_MAX - 100 && !GLOBAL_ARMED) {
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
     		while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 40000000) {
@@ -1157,7 +1194,6 @@ main(void)
     		if (ARM_state_poll) GLOBAL_ARMED = true;
     	}
     	// No throttle and rudder left - disarming sequence
-    	//else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && GLOBAL_ARMED && LPaltitude <= altitudeInit+100) {
 		else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && GLOBAL_ARMED) {
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
 			while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 10000000) {
@@ -1166,12 +1202,5 @@ main(void)
 			}
 			if (ARM_state_poll) GLOBAL_ARMED = false;
     	}
-
-//    	count++;
-//    	if (count == 30000) {
-//    		count = 0;
-//    		UARTprintf("%d %d %d\n", IS_ARMED, throttle, rudder);
-//    	}
-
 	}
 }
