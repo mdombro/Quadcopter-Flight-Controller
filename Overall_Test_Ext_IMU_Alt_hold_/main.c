@@ -118,6 +118,7 @@ tI2CMInstance g_sI2CInst;
 //
 //*****************************************************************************
 Adafruit_BNO055 BNO;
+uint8_t sys, gyro, accel, mag;
 
 //*****************************************************************************
 //
@@ -457,7 +458,7 @@ void PIDUpdate() {
 //		alt_start_flag = false;
 //	}
 	if(ALTHOLD) {
-		throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, -45.0, 45.0);
+		throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, -100.0, 100.0);
 	}
 	else {
 		throttle_f = Map_f((float)throttle, THROTTLE_MIN, THROTTLE_MAX, 10.0, 90.0);
@@ -513,15 +514,16 @@ void PIDUpdate() {
 //		}
 
 		if(ALTHOLD) {
-			if (throttle_f > 10.0) {
-				AltHoldVelocity = throttle_f - 10.0;
+			if (throttle_f > 50.0) {
+				AltHoldVelocity = throttle_f - 50.0;
 			}
-			else if (throttle_f < -10.0) {
-				AltHoldVelocity = throttle_f + 10.0;
+			else if (throttle_f < -50.0) {
+				AltHoldVelocity = throttle_f + 50.0;
 			}
 			else {
 				AltHoldVelocity = 0.0;
 			}
+
 			prevAltHoldTarget = AltHoldTarget;
 			AltHoldTarget = AltHoldVelocity/50.0 + AltHoldTarget;
 
@@ -542,14 +544,25 @@ void PIDUpdate() {
 
 		Compute(&AngleRoll);
 		Compute(&AnglePitch);
-//		Compute(&AngleYaw);
+		Compute(&AngleYaw);
+
 		if ((rudder_f < RUDDER_NULL_SIZE && rudder_f > -RUDDER_NULL_SIZE) || throttle < 1050) {
-			rudderRate = 0;
+			//rudderRate = 0;
 		}
 		else {
 			rudderRate = rudder_f;
 			yawTarget = Eulers[0];
 		}
+
+		if(abs(yawTarget-Eulers[0]) >= 180.0) {
+			if(yawTarget-Eulers[0] >= 0.0) {
+				yawTarget -= 360.0;
+			}
+			else if(yawTarget-Eulers[0] < 0.0) {
+				yawTarget += 360.0;
+			}
+		}
+
 		Compute(&RateRoll);
 		Compute(&RatePitch);
 		Compute(&RateYaw);
@@ -564,6 +577,8 @@ void PIDUpdate() {
 	//  PWM1 - Back Left
 	//  PWM3 - Front Right
 	//  PWM2 - Back Right
+
+		//UARTprintf("$%d %d %d;", (int)Eulers[0], (int)rudderRate, (int)yawTarget);
 
 		writePWM4(Constrain(throttle_final + RateRollOutput + RatePitchOutput + RateYawOutput, 17, 100));  // Front left
 		writePWM1(Constrain(throttle_final + RateRollOutput - RatePitchOutput - RateYawOutput, 17, 100));
@@ -588,6 +603,7 @@ float Abs(float in) {
 }
 
 void IMUupdate() {
+
 	TimerIntClear(TIMER2_BASE, TIMER_TIMA_TIMEOUT);
 	IntPriorityMaskSet(0b01000000);
 	if(initYawCount > 0) {
@@ -597,45 +613,6 @@ void IMUupdate() {
 
 	getGyros(&BNO, Gyros);
 	getEulers(&BNO, Eulers);
-
-//	if(Gyros[0] >= 0) {
-//		Gyros[0] = 1;
-//	}
-//	else {
-//		Gyros[0] = -1;
-//	}
-//	if(Gyros[1] >= 0) {
-//		Gyros[1] = 1;
-//	}
-//	else {
-//		Gyros[1] = -1;
-//	}
-//	if(Gyros[2] >= 0) {
-//		Gyros[2] = 1;
-//	}
-//	else {
-//		Gyros[2] = -1;
-//	}
-//
-//	if(Eulers[0] >= 0) {
-//		Eulers[0] = 1;
-//	}
-//	else {
-//		Eulers[0] = -1;
-//	}
-//	if(Eulers[1] >= 0) {
-//		Eulers[1] = 1;
-//	}
-//	else {
-//		Eulers[1] = -1;
-//	}
-//	if(Eulers[2] >=0) {
-//		Eulers[2] = 1;
-//	}
-//	else {
-//		Eulers[2] = -1;
-//	}
-
 
 
 //*****************************************************************************
@@ -681,36 +658,40 @@ void IMUupdate() {
 
 //	Eulers[1] -= -0.9375;
 //	Eulers[2] -= 0.6875;
+	//UARTprintf("$%d;", (int)Eulers[0]);
 	IntPriorityMaskSet(0);
 	//uint8_t sys, gyro, accel, mag;
 	//getCalibration(&sys, &gyro, &accel, &mag);
 	//UARTprintf("$%d %d;", (int)throttle_final, (int)throttle_PID);
 	//UARTprintf("%d  %d  %d  %d\n", sys, gyro, accel, mag);
 	//UARTprintf("%8d   ,%8d,   %8d,   %4d,   %4d,   %4d\n",(int)(Eulers[0]*1e1), (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1), (int)(Gyros[0]*1e4), (int)(Gyros[1]*1e4), (int)(Gyros[2]*1e4));
-	//UARTprintf("%4d  %4d  %4d\n", (int)(Eulers[0]*1e1), (int)(Eulers[1]*1e1), (int)(Eulers[2]*1e1) );
+    //UARTprintf("$%d %d %d;", (int)(Eulers[0]), (int)(Eulers[1]), (int)(Eulers[2]) );
 	//UARTprintf("%4d %4d %4d\n", (int)(aileron_f*1e3), (int)(elevator_f*1e3), (int)(rudder_f*1e3));
 }
 
 void ReadPulsedLight() {
+
 	TimerIntClear(TIMER3_BASE, TIMER_TIMA_TIMEOUT);
 	PulsedLightDistance = ReadDistance();
 	float roll = Eulers[2]*(M_PI/180.0);
 	float pitch = Eulers[1]*(M_PI/180.0);
-	roll = roll < 0.0 ? -1.0*roll : roll;
-	pitch = pitch < 0.0 ? -1.0*pitch : pitch;
-	float x = sin(roll);
-	float y = sin(pitch);
-	float z = sqrt(1.0 - pow(x,2) - pow(y,2));
-	float l = sqrt(pow(x,2) + pow(y,2));
-	float theta = atan2(z,l);
-	//theta = (M_PI/2.0) - theta;
-	altitude = sin(theta)*(float)PulsedLightDistance;
-	LPaltitude = LPaltitude-(LPF_BETA*(LPaltitude-altitude));
+	if (roll < 80 || pitch < 80 || roll > -80 || pitch > -80) {
+		roll = roll < 0.0 ? -1.0*roll : roll;
+		pitch = pitch < 0.0 ? -1.0*pitch : pitch;
+		float x = sin(roll);
+		float y = sin(pitch);
+		float z = sqrt(1.0 - pow(x,2) - pow(y,2));
+		float l = sqrt(pow(x,2) + pow(y,2));
+		float theta = atan2(z,l);
+		//theta = (M_PI/2.0) - theta;
+		altitude = sin(theta)*(float)PulsedLightDistance;
+		LPaltitude = LPaltitude-(LPF_BETA*(LPaltitude-altitude));
+	}
 //	if (count_alt < 0) {
 //		alt_init_flag = true;
 //	}
 //	count_alt--;
-//	UARTprintf("$%d %d;", (int)(LPaltitude), (int)AltHoldTarget);
+	//UARTprintf("$%d %d %d;", (int)(LPaltitude), (int)AltHoldTarget, (int)PulsedLightDistance);
 //	UARTprintf("%4d\n",PulsedLightDistance);
 }
 
@@ -756,9 +737,14 @@ main(void)
 	throttleAverage = 0.0;
 	hover_error = 0;
 	p_hover = 0.01;
-	hover_offset = 60;
+	hover_offset = 54;
 	init_flag = false;
 	rudderSamples[0] = rudderSamples[1] = rudderSamples[2] = rudderSamples[3] = rudderSamples[4] = 0;
+
+	sys=0;
+	gyro=0;
+	accel=0;
+	mag=0;
 
 	IS_ARMED = false;
 	ARM_state_poll = false;
@@ -767,6 +753,11 @@ main(void)
     // Setup the system clock to run at 40 Mhz from PLL with crystal reference
     SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_XTAL_16MHZ | SYSCTL_OSC_MAIN);
 
+    SysCtlDelay(3);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+   	SysCtlDelay(3);
+   	GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_3);
+   	GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 0);
 
     //
     // Initialize the UART.
@@ -847,7 +838,7 @@ main(void)
 
     PID_Make(&AngleRoll, &Eulers[2], &aileronRate, &aileron_f, 3.5, 0, 0, DIRECT);   // P 4.5 I 0.05
     PID_Make(&AnglePitch, &Eulers[1], &elevatorRate, &elevator_f, 3.5, 0, 0, DIRECT);  // P 4.5 I 0.05
-    PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.17, 0, 0.27, DIRECT);
+    PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.23, 0, 0.0, DIRECT);
     SetMode(&AngleRoll, AUTOMATIC);
 	SetMode(&AnglePitch, AUTOMATIC);
 	SetMode(&AngleYaw, AUTOMATIC);
@@ -855,7 +846,7 @@ main(void)
 	SetOutputLimits(&AnglePitch, -ANGLE_RATE_RANGE, ANGLE_RATE_RANGE);
 	SetOutputLimits(&AngleYaw, -ANGLE_RUDDER_RATE_RANGE, ANGLE_RUDDER_RATE_RANGE);
 
-	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 0.9, DIRECT);  // d is 1.0
+	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 0.8, DIRECT);  // d is 1.0
 	SetMode(&AltHold, MANUAL);
 	SetOutputLimits(&AltHold, -45.0, 45.0);
 
@@ -941,6 +932,17 @@ main(void)
 
     IntMasterEnable();
 
+    while (mag < 2) {
+    	getCalibration(&sys, &gyro, &accel, &mag);
+//    	if (mag >= 1) {
+//    		yawTarget = Eulers[0];
+//    		break;
+//    	}
+    	SysCtlDelay(20000000);
+    }
+
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 8);
+
     uint32_t count = 0;
     while(1)
     {
@@ -958,7 +960,7 @@ main(void)
     		//TimerDisable(TIMER4_BASE, TIMER_A);
     	}
     	// No throttle and rudder left - disarming sequence
-    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && IS_ARMED && LPaltitude <= altitudeInit+100) {
+    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && IS_ARMED) {
     		//TimerLoadSet(TIMER4_BASE, TIMER_A, 200000);
 			//TimerEnable(TIMER4_BASE, TIMER_A);
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);

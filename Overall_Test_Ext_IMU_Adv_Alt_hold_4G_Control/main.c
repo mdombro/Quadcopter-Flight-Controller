@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <math.h>
 #include "inc/hw_memmap.h"
 #include "inc/hw_ints.h"
 #include "driverlib/debug.h"
@@ -40,7 +41,6 @@
 #include "driverlib/uart.h"
 #include "driverlib/fpu.h"
 #include "utils/uartstdio.h"
-#include <math.h>
 #include "sensorlib/i2cm_drv.h"
 #include "driverlib/timer.h"
 #include "ESC.h"
@@ -137,6 +137,7 @@ tI2CMInstance g_sI2CInst;
 //
 //*****************************************************************************
 Adafruit_BNO055 BNO;
+uint8_t sys, gyro, accel, mag;
 
 //*****************************************************************************
 //
@@ -219,8 +220,8 @@ uint8_t stallCount;
 uint16_t Pi_yaw, Pi_throttle, Pi_roll, Pi_pitch;
 uint16_t prePi_yaw, prePi_throttle, prePi_roll, prePi_pitch;
 bool HOSED_UP;
-bool LAUNCH;
-bool init_launch_flag;
+//bool LAUNCH;
+//bool init_launch_flag;
 
 //*****************************************************************************
 //
@@ -316,7 +317,21 @@ void PiUARTInt() {
 				}
 			}
 
+			//
 			//IF GREATER THAN +- 20 on the orientation forward previous orientation
+			//
+			if(abs(Pi_yaw-prePi_yaw) > 20) {
+				Pi_yaw = prePi_yaw;
+			}
+			if(abs(Pi_roll-prePi_roll) > 20) {
+				Pi_roll = prePi_roll;
+			}
+			if(abs(Pi_pitch-prePi_pitch) > 20) {
+				Pi_pitch = prePi_pitch;
+			}
+			if(abs(Pi_throttle-prePi_throttle) > 20) {
+				Pi_throttle = prePi_throttle;
+			}
 
 			prePi_yaw = Pi_yaw;
 			prePi_throttle = Pi_throttle;
@@ -601,7 +616,7 @@ void PIDUpdate() {
 		// Map throttle according to ALTHOLD
 		//
 		if (ALTHOLD) {
-			GLOBAL_THROTTLE = Map_f( (float)(Pi_throttle), 0, 65535, -45.0 , 45.0);
+			GLOBAL_THROTTLE = Map_f( (float)(Pi_throttle), 0, 65535, -100.0 , 100.0);
 		}
 		else if (!ALTHOLD) {
 			GLOBAL_THROTTLE = Map_f( (float)(Pi_throttle), 0, 65535, 10.0, 90.0);
@@ -676,11 +691,11 @@ void PIDUpdate() {
 		// Altitude Calculation for throttle adjustments
 		//
 		if (ALTHOLD && ALT_prev == true) {
-			if (GLOBAL_THROTTLE > 10.0) {
-				AltHoldVelocity = GLOBAL_THROTTLE - 10.0;
+			if (GLOBAL_THROTTLE > 50.0) {
+				AltHoldVelocity = GLOBAL_THROTTLE - 50.0;
 			}
-			else if (GLOBAL_THROTTLE < -10.0) {
-				AltHoldVelocity = GLOBAL_THROTTLE + 10.0;
+			else if (GLOBAL_THROTTLE < -50.0) {
+				AltHoldVelocity = GLOBAL_THROTTLE + 50.0;
 			}
 			else {
 				AltHoldVelocity = 0.0;
@@ -707,16 +722,29 @@ void PIDUpdate() {
 
 		Compute(&AngleRoll);
 		Compute(&AnglePitch);
+		Compute(&AngleYaw);
 
 		//
 		// Adding null zone for input channel yaw
 		//
 		if ((GLOBAL_YAW < RUDDER_NULL_SIZE && GLOBAL_YAW > -RUDDER_NULL_SIZE) || (throttle < 1050 && GLOBAL_SOURCE_STATE == TX_CONTROL)) {
-			rudderRate = 0;
+			//rudderRate = 0;
 		}
 		else {
 			rudderRate = GLOBAL_YAW;
 			yawTarget = Eulers[0];
+		}
+
+		//
+		//Wrap Around Algorithm for 0 & 360 degrees
+		//
+		if(abs(yawTarget-Eulers[0]) >= 180.0) {
+			if(yawTarget-Eulers[0] >= 0.0) {
+				yawTarget -= 360.0;
+			}
+			else if(yawTarget-Eulers[0] < 0.0) {
+				yawTarget += 360.0;
+			}
 		}
 
 		Compute(&RateRoll);
@@ -773,7 +801,6 @@ void IMUupdate() {
 //
 //*****************************************************************************
 
-	UARTprintf("$%d;", Eulers[0]);
 	IntPriorityMaskSet(0);
 }
 
@@ -790,16 +817,18 @@ void ReadPulsedLight() {
 	PulsedLightDistance = ReadDistance();
 	float roll = Eulers[2]*(M_PI/180.0);
 	float pitch = Eulers[1]*(M_PI/180.0);
-	roll = roll < 0.0 ? -1.0*roll : roll;
-	pitch = pitch < 0.0 ? -1.0*pitch : pitch;
-	float x = sin(roll);
-	float y = sin(pitch);
-	float z = sqrt(1.0 - pow(x,2) - pow(y,2));
-	float l = sqrt(pow(x,2) + pow(y,2));
-	float theta = atan2(z,l);
-	//theta = (M_PI/2.0) - theta;
-	altitudeCal = sin(theta)*(float)PulsedLightDistance;
-	LPaltitude = LPaltitude-(LPF_BETA*(LPaltitude-altitudeCal));
+	if (roll < 80 || pitch < 80 || roll > -80 || pitch > -80) {
+		roll = roll < 0.0 ? -1.0*roll : roll;
+		pitch = pitch < 0.0 ? -1.0*pitch : pitch;
+		float x = sin(roll);
+		float y = sin(pitch);
+		float z = sqrt(1.0 - pow(x,2) - pow(y,2));
+		float l = sqrt(pow(x,2) + pow(y,2));
+		float theta = atan2(z,l);
+		//theta = (M_PI/2.0) - theta;
+		altitudeCal = sin(theta)*(float)PulsedLightDistance;
+		LPaltitude = LPaltitude-(LPF_BETA*(LPaltitude-altitudeCal));
+	}
 //	if (count_alt < 0) {
 //		alt_init_flag = true;
 //	}
@@ -823,8 +852,6 @@ void BMP180ReadISR(void) {
 	// Get & print temperature
 	//
 	BMP180GetTemp(&BmpSensHub, &BmpSensHubCals);
-	//FloatToPrint(BmpSensHub.temp, printValue);
-	//UARTprintf("%d.%03d, ",printValue[0], printValue[1]);
 
 	//
 	// Get pressure and convert it to an altitude
@@ -885,7 +912,6 @@ float Constrain(float input, float floor, float ceiling) {
 		return input;
 }
 
-
 //*****************************************************************************
 //
 // Main application entry point.
@@ -933,13 +959,18 @@ main(void)
 
 	HOSED_UP = false;
 
-	LAUNCH = false;
-	init_launch_flag = true;
+//	LAUNCH = false;
+//	init_launch_flag = true;
 
 	prePi_roll = 0;
 	prePi_pitch = 0;
 	prePi_yaw = 0;
 	prePi_throttle = 0;
+
+	sys = 0;
+	gyro = 0;
+	accel = 0;
+	mag = 0;
 
     //**********************************************************
 	//
@@ -948,6 +979,15 @@ main(void)
 	//**********************************************************
     SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_XTAL_16MHZ | SYSCTL_OSC_MAIN);
 
+    //**********************************************************
+	//
+	// Mag Calibration LED Configuration
+	//
+	//**********************************************************
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+	SysCtlDelay(3);
+	GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_3);
+	GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 0);
 
     //**********************************************************
 	//
@@ -1025,9 +1065,9 @@ main(void)
     SetOutputLimits(&RatePitch, -50, 50);
     SetOutputLimits(&RateYaw, -40, 40);
 
-    PID_Make(&AngleRoll, &Eulers[2], &aileronRate, &GLOBAL_ROLL, 3.5, 0.0, 0, DIRECT);
-    PID_Make(&AnglePitch, &Eulers[1], &elevatorRate, &GLOBAL_PITCH, 3.5, 0.0, 0, DIRECT);
-    PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.17, 0, 0.27, DIRECT);
+    PID_Make(&AngleRoll, &Eulers[2], &aileronRate, &GLOBAL_ROLL, 3.5, 0.0, 0.0, DIRECT);
+    PID_Make(&AnglePitch, &Eulers[1], &elevatorRate, &GLOBAL_PITCH, 3.5, 0.0, 0.0, DIRECT);
+    PID_Make(&AngleYaw, &Eulers[0], &rudderRate, &yawTarget, 0.25, 0.0, 0.0, DIRECT);
     SetMode(&AngleRoll, AUTOMATIC);
 	SetMode(&AnglePitch, AUTOMATIC);
 	SetMode(&AngleYaw, AUTOMATIC);
@@ -1037,7 +1077,7 @@ main(void)
 
 	PID_Make(&AltHold, &LPaltitude, &throttle_PID, &AltHoldTarget, 0.3, 0.0001, 0.7, DIRECT);
 	SetMode(&AltHold, AUTOMATIC);
-	SetOutputLimits(&AltHold, -45.0, 45.0);
+	SetOutputLimits(&AltHold, -25.0, 25.0);
 
 	SysCtlDelay(6000000); //80000000   800000
 
@@ -1177,6 +1217,13 @@ main(void)
 
     IntMasterEnable();
 
+    while (mag < 2) {
+		getCalibration(&sys, &gyro, &accel, &mag);
+		SysCtlDelay(20000000);
+	}
+
+	GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 8);
+
     while(1)
     {
     	//**********************************************************
@@ -1184,7 +1231,9 @@ main(void)
     	// Arming/Disarming Sequences
     	//
     	//**********************************************************
+    	//
     	// No throttle and rudder right - arming sequence
+    	//
     	if (throttle < THROTTLE_MIN + 110 && rudder > RUDDER_MAX - 100 && !GLOBAL_ARMED) {
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
     		while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 40000000) {
@@ -1193,8 +1242,10 @@ main(void)
     		}
     		if (ARM_state_poll) GLOBAL_ARMED = true;
     	}
+    	//
     	// No throttle and rudder left - disarming sequence
-		else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && GLOBAL_ARMED) {
+		//
+    	else if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100 && GLOBAL_ARMED) {
     		ARM_start = TimerValueGet(TIMER4_BASE, TIMER_A);
 			while (ARM_start - TimerValueGet(TIMER4_BASE, TIMER_A) < 10000000) {
 				if (throttle < THROTTLE_MIN + 110 && rudder < RUDDER_MIN + 100) ARM_state_poll = true;

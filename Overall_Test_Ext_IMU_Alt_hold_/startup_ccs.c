@@ -280,12 +280,13 @@ NmiSR(void)
 static void
 FaultISR(void)
 {
+	ResetISR();
     //
     // Enter an infinite loop.
     //
-    while(1)
-    {
-    }
+    //while(1)
+    //{
+    //}
 }
 
 //*****************************************************************************
